@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { useCart } from "@/lib/cart-context";
 import { BUSINESS } from "@/lib/constants";
 import { HiOutlineShoppingBag, HiOutlineMenu, HiOutlineX, HiOutlineQuestionMarkCircle } from "react-icons/hi";
@@ -22,23 +21,13 @@ export function Header() {
   return (
     <header className="border-b border-navy-100 bg-white sticky top-0 z-40">
       <div className="max-w-6xl mx-auto px-4 md:px-6 flex items-center justify-between h-16">
-        <Link href="/" className="flex items-center gap-2" onClick={() => setMenuOpen(false)}>
-          <Image
-            src="/logo.jpg"
-            alt="Jay Imports logo"
-            width={40}
-            height={40}
-            className="rounded-full"
-          />
-          <div className="flex flex-col leading-none">
-            <span className="font-display text-lg text-navy-900">Jay Imports</span>
-            <span className="text-[11px] text-turquoise-dark tracking-wide hidden sm:block">
-              {BUSINESS.tagline}
-            </span>
-          </div>
+        <Link href="/" className="flex flex-col leading-none" onClick={() => setMenuOpen(false)}>
+          <span className="font-display text-xl text-navy-900 uppercase">{BUSINESS.shortName}</span>
+          <span className="text-[9px] text-turquoise-dark tracking-[0.2em] uppercase mt-1 hidden sm:block">
+            {BUSINESS.tagline}
+          </span>
         </Link>
 
-        {/* Desktop nav */}
         <nav className="hidden md:flex items-center gap-8 text-sm text-navy-600">
           {NAV_LINKS.map((link) => (
             <Link key={link.href} href={link.href} className="hover:text-navy-900">
@@ -57,7 +46,6 @@ export function Header() {
             )}
           </Link>
 
-          {/* Mobile menu toggle */}
           <button
             className="md:hidden text-navy-900"
             onClick={() => setMenuOpen((v) => !v)}
@@ -68,7 +56,6 @@ export function Header() {
         </div>
       </div>
 
-      {/* Mobile nav drawer */}
       {menuOpen && (
         <nav className="md:hidden border-t border-navy-100 bg-white px-4 py-3 space-y-1">
           {NAV_LINKS.map((link) => {
