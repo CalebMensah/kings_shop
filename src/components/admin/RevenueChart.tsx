@@ -10,30 +10,30 @@ export function RevenueChart({ data }: { data: { date: string; revenue: number }
         <AreaChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
           <defs>
             <linearGradient id="revenueFill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#2FBFBF" stopOpacity={0.3} />
-              <stop offset="100%" stopColor="#2FBFBF" stopOpacity={0} />
+              <stop offset="0%" stopColor="#C8202A" stopOpacity={0.25} />
+              <stop offset="100%" stopColor="#C8202A" stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#EAEEF4" vertical={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="#F4F4F4" vertical={false} />
           <XAxis
             dataKey="date"
-            tick={{ fontSize: 11, fill: "#6E8AB2" }}
+            tick={{ fontSize: 11, fill: "#7A7A7A" }}
             interval="preserveStartEnd"
             tickLine={false}
-            axisLine={{ stroke: "#CBD6E6" }}
+            axisLine={{ stroke: "#E5E5E5" }}
           />
           <YAxis
-            tick={{ fontSize: 11, fill: "#6E8AB2" }}
+            tick={{ fontSize: 11, fill: "#7A7A7A" }}
             tickLine={false}
             axisLine={false}
             tickFormatter={(v) => `₵${v}`}
             width={50}
           />
           <Tooltip
-            formatter={(value) => [`GH₵${Number(value ?? 0).toFixed(2)}`, "Revenue"]}
-            contentStyle={{ fontSize: 12, borderRadius: 6, border: "1px solid #CBD6E6" }}
+            formatter={(value: number) => [`GH₵${value.toFixed(2)}`, "Revenue"]}
+            contentStyle={{ fontSize: 12, borderRadius: 6, border: "1px solid #E5E5E5" }}
           />
-          <Area type="monotone" dataKey="revenue" stroke="#1F9999" strokeWidth={2} fill="url(#revenueFill)" />
+          <Area type="monotone" dataKey="revenue" stroke="#B01B24" strokeWidth={2} fill="url(#revenueFill)" />
         </AreaChart>
       </ResponsiveContainer>
     </div>
