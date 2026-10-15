@@ -41,7 +41,7 @@ export function AdminShell({
   return (
     <div className="min-h-screen flex bg-canvas">
       <div className="md:hidden fixed top-0 inset-x-0 h-14 bg-navy-900 text-white flex items-center justify-between px-4 z-50">
-        <span className="font-display text-base">Jay Imports</span>
+        <span className="font-display text-base">{BUSINESS.shortName}</span>
         <button onClick={() => setSidebarOpen(true)} aria-label="Open menu">
           <HiOutlineMenu className="w-6 h-6" />
         </button>
@@ -61,7 +61,7 @@ export function AdminShell({
       >
         <div className="px-5 py-6 border-b border-white/10 flex items-center justify-between">
           <div>
-            <p className="font-display text-lg leading-tight">Jay Imports</p>
+            <p className="font-display text-lg leading-tight">{BUSINESS.shortName}</p>
             <p className="text-xs text-turquoise-light mt-0.5">{BUSINESS.tagline}</p>
           </div>
           <button className="md:hidden text-navy-300" onClick={() => setSidebarOpen(false)} aria-label="Close menu">
