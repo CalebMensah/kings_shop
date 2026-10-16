@@ -30,7 +30,7 @@ export function RevenueChart({ data }: { data: { date: string; revenue: number }
             width={50}
           />
           <Tooltip
-            formatter={(value: number) => [`GH₵${value.toFixed(2)}`, "Revenue"]}
+            formatter={(value) => [`GH₵${Number(value ?? 0).toFixed(2)}`, "Revenue"]}
             contentStyle={{ fontSize: 12, borderRadius: 6, border: "1px solid #E5E5E5" }}
           />
           <Area type="monotone" dataKey="revenue" stroke="#B01B24" strokeWidth={2} fill="url(#revenueFill)" />
