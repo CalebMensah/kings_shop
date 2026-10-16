@@ -43,14 +43,26 @@ export async function DELETE(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { count } = await supabase
+  const { count: childCount } = await supabase
+    .from("categories")
+    .select("id", { count: "exact", head: true })
+    .eq("parent_id", id);
+
+  if (childCount && childCount > 0) {
+    return NextResponse.json(
+      { error: `Can't delete — it still has ${childCount} subcategor${childCount === 1 ? "y" : "ies"}. Delete those first.` },
+      { status: 400 }
+    );
+  }
+
+  const { count: productCount } = await supabase
     .from("products")
     .select("id", { count: "exact", head: true })
     .eq("category_id", id);
 
-  if (count && count > 0) {
+  if (productCount && productCount > 0) {
     return NextResponse.json(
-      { error: `Can't delete — ${count} product(s) still use this category. Reassign them first.` },
+      { error: `Can't delete — ${productCount} product(s) still use this category. Reassign them first.` },
       { status: 400 }
     );
   }
@@ -59,4 +71,4 @@ export async function DELETE(
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   return NextResponse.json({ success: true });
-}
+  }
