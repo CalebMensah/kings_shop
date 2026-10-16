@@ -7,9 +7,9 @@ export const BUSINESS = {
   phone: "0598785053",
   phones: ["0598785053", "0503168438"],
   whatsapp: "0598785053",
-  email: "email@yourdomain.com", // TODO: replace with Kings' real email
-  instagram: "", // TODO: add handle if they have one
-  tiktok: "", // TODO: add handle if they have one
+  email: "email@yourdomain.com",
+  instagram: "",
+  tiktok: "",
   location: "Master Sam, opposite Ankokeen Trading Enterprise, Cape Coast",
   categories: [
     "Fashion & Apparel",
@@ -21,7 +21,7 @@ export const BUSINESS = {
     "Auto & Industrial",
     "Lifestyle & More",
   ],
-}; // <-- this was missing
+};
 
 export const POLICIES = {
   preorder:
