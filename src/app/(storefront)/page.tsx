@@ -1,4 +1,6 @@
 import Link from "next/link";
+import Image from "next/image";
+import { HiOutlineArrowRight } from "react-icons/hi";
 import { ProductCard } from "@/components/storefront/ProductCard";
 import { createClient } from "@/lib/supabase/server";
 import { BUSINESS } from "@/lib/constants";
@@ -20,34 +22,50 @@ export default async function HomePage() {
     <div>
       <div className="max-w-6xl mx-auto px-4 md:px-6 pt-6">
         <BatchBanner batch={batch} />
-      </div>
 
-      <section className="border-b border-navy-100 bg-white">
-        <div className="max-w-6xl mx-auto px-4 md:px-6 py-12 md:py-24 grid md:grid-cols-2 gap-8 md:gap-10 items-center">
-          <div>
-            <p className="text-turquoise-dark text-sm font-medium mb-3">{BUSINESS.tagline}</p>
-            <h1 className="font-display text-4xl md:text-5xl text-navy-900 leading-tight">
-              Quality goods, sourced from China and beyond, delivered to Ghana.
-            </h1>
-            <p className="text-navy-500 mt-4 max-w-md">
-              Fashion, electronics, home items, and more — order what you need and we handle the sourcing and importation.
-            </p>
+        <section>
+          {/* The headline is baked into the banner image, so this keeps it
+              readable for search engines and screen readers */}
+          <h1 className="sr-only">
+            Quality goods, sourced from China and beyond, delivered to Ghana.
+          </h1>
+          <p className="sr-only">
+            Fashion, electronics, home items, and more — order what you need and we handle the
+            sourcing and importation.
+          </p>
+
+          {/* Mobile: crops to the left 62% of the banner (where all the text is) so it stays readable.
+              md and up: shows the full 2:1 banner. */}
+          <div className="relative aspect-[5/4] md:aspect-[2/1] overflow-hidden rounded-lg border border-navy-100 bg-canvas">
+            <Image
+              src="/hero-banner.jpg"
+              alt={`${BUSINESS.name} banner`}
+              fill
+              priority
+              sizes="(max-width: 767px) 160vw, (max-width: 1200px) 100vw, 1152px"
+              className="object-cover object-left md:object-center"
+            />
+
+            {/* Tablet and desktop: button sits on the banner, beside the last line of text */}
             <Link
               href="/shop"
-              className="inline-block mt-6 bg-navy-800 text-white px-6 py-3 rounded text-sm font-medium hover:bg-navy-700 transition"
+              className="hidden md:inline-flex absolute left-[20%] top-[91%] -translate-y-1/2 items-center gap-2 rounded bg-turquoise-dark px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-turquoise lg:px-5 lg:py-2 lg:text-sm"
             >
               Browse products
+              <HiOutlineArrowRight className="h-3.5 w-3.5 lg:h-4 lg:w-4" />
             </Link>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            {BUSINESS.categories.slice(0, 4).map((cat) => (
-              <div key={cat} className="bg-canvas border border-navy-100 rounded p-4">
-                <p className="text-sm text-navy-700">{cat}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+
+          {/* Mobile: button goes under the banner so it never covers the text */}
+          <Link
+            href="/shop"
+            className="md:hidden mt-3 flex items-center justify-center gap-2 rounded bg-turquoise-dark py-3 text-sm font-medium text-white"
+          >
+            Browse products
+            <HiOutlineArrowRight className="h-4 w-4" />
+          </Link>
+        </section>
+      </div>
 
       <section className="max-w-6xl mx-auto px-4 md:px-6 py-12">
         <div className="flex items-center justify-between mb-6">
