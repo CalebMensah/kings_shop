@@ -7,7 +7,7 @@ import { HiOutlineUpload, HiOutlineX, HiOutlinePlus, HiOutlineTrash, HiOutlinePh
 
 type Category = { id: string; name: string };
 type ColorRow = { client_id: string; color_name: string; image_url: string };
-type SizeRow = { client_id: string; size_value: string; price_adjustment: number };
+type SizeRow = { client_id: string; size_value: string; price: number | null };
 
 type ExistingProduct = {
   id: string;
@@ -20,8 +20,11 @@ type ExistingProduct = {
   status: "active" | "draft" | "archived";
   product_images?: { image_url: string }[];
   product_colors?: { id: string; color_name: string; image_url: string }[];
-  product_sizes?: { id: string; size_value: string; price_adjustment: number }[];
+  product_sizes?: { id: string; size_value: string; price: number | null }[];
+  unavailable_combos?: { color_id: string; size_id: string }[];
 };
+
+const comboKey = (colorId: string, sizeId: string) => `${colorId}::${sizeId}`;
 
 function makeClientId() {
   return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
@@ -60,7 +63,11 @@ export function ProductForm({
     existingProduct?.product_colors?.map((c) => ({ client_id: c.id, color_name: c.color_name, image_url: c.image_url })) ?? []
   );
   const [sizes, setSizes] = useState<SizeRow[]>(
-    existingProduct?.product_sizes?.map((s) => ({ client_id: s.id, size_value: s.size_value, price_adjustment: s.price_adjustment })) ?? []
+    existingProduct?.product_sizes?.map((s) => ({ client_id: s.id, size_value: s.size_value, price: s.price })) ?? []
+  );
+  // Combinations that do NOT exist. Everything else is available.
+  const [unavailable, setUnavailable] = useState<Set<string>>(
+    () => new Set((existingProduct?.unavailable_combos ?? []).map((u) => comboKey(u.color_id, u.size_id)))
   );
 
   const [uploadingProductImages, setUploadingProductImages] = useState(false);
@@ -70,6 +77,7 @@ export function ProductForm({
   const [error, setError] = useState<string | null>(null);
 
   const hasColors = colors.length > 0;
+  const hasSizes = sizes.length > 0;
 
   async function handleProductImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
@@ -110,18 +118,36 @@ export function ProductForm({
 
   function removeColor(clientId: string) {
     setColors((prev) => prev.filter((c) => c.client_id !== clientId));
+    setUnavailable((prev) => new Set(Array.from(prev).filter((k) => !k.startsWith(`${clientId}::`))));
   }
 
   function addSize() {
-    setSizes((prev) => [...prev, { client_id: makeClientId(), size_value: "", price_adjustment: 0 }]);
+    setSizes((prev) => [...prev, { client_id: makeClientId(), size_value: "", price: null }]);
   }
 
-  function updateSize(clientId: string, field: "size_value" | "price_adjustment", value: string | number) {
-    setSizes((prev) => prev.map((s) => (s.client_id === clientId ? { ...s, [field]: value } : s)));
+  function updateSizeValue(clientId: string, value: string) {
+    setSizes((prev) => prev.map((s) => (s.client_id === clientId ? { ...s, size_value: value } : s)));
+  }
+
+  function updateSizePrice(clientId: string, raw: string) {
+    setSizes((prev) =>
+      prev.map((s) => (s.client_id === clientId ? { ...s, price: raw === "" ? null : Number(raw) } : s))
+    );
   }
 
   function removeSize(clientId: string) {
     setSizes((prev) => prev.filter((s) => s.client_id !== clientId));
+    setUnavailable((prev) => new Set(Array.from(prev).filter((k) => !k.endsWith(`::${clientId}`))));
+  }
+
+  function toggleCombo(colorId: string, sizeId: string) {
+    const key = comboKey(colorId, sizeId);
+    setUnavailable((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -129,11 +155,24 @@ export function ProductForm({
     setSubmitting(true);
     setError(null);
 
-    if (hasColors && colors.some((c) => !c.image_url || !c.color_name.trim())) {
+    if (colors.some((c) => !c.image_url || !c.color_name.trim())) {
       setError("Every color needs a name and an uploaded photo");
       setSubmitting(false);
       return;
     }
+    if (sizes.some((s) => !s.size_value.trim())) {
+      setError("Every size needs a name");
+      setSubmitting(false);
+      return;
+    }
+    if (!hasColors && imageUrls.length === 0) {
+      setError("Add at least one product image, or add colors with photos");
+      setSubmitting(false);
+      return;
+    }
+
+    const colorIds = new Set(colors.map((c) => c.client_id));
+    const sizeIds = new Set(sizes.map((s) => s.client_id));
 
     const payload = {
       name,
@@ -144,8 +183,14 @@ export function ProductForm({
       preorder_fulfillment_note: preorderNote || undefined,
       status,
       images: imageUrls,
-      colors: hasColors ? colors : [],
-      sizes: hasColors ? sizes : [],
+      colors,
+      sizes,
+      unavailable: Array.from(unavailable)
+        .map((key) => {
+          const [color_client_id, size_client_id] = key.split("::");
+          return { color_client_id, size_client_id };
+        })
+        .filter((u) => colorIds.has(u.color_client_id) && sizeIds.has(u.size_client_id)),
     };
 
     const url = isEditing ? `/api/admin/products/${existingProduct.id}` : "/api/admin/products";
@@ -222,6 +267,7 @@ export function ProductForm({
             onChange={(e) => setPrice(e.target.value)}
             className="w-full border border-navy-100 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-turquoise"
           />
+          <p className="text-xs text-navy-400 mt-1">Shown on product cards. Any size without its own price uses this.</p>
         </div>
         <div>
           <label className="block text-sm text-navy-700 mb-1">Category</label>
@@ -278,6 +324,7 @@ export function ProductForm({
         />
       </div>
 
+      {/* Colors */}
       <div className="border border-navy-100 rounded p-4">
         <div className="flex items-center justify-between mb-3">
           <div>
@@ -325,47 +372,96 @@ export function ProductForm({
         </div>
       </div>
 
-      {hasColors && (
-        <div className="border border-navy-100 rounded p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <p className="text-sm font-medium text-navy-700">Sizes</p>
-              <p className="text-xs text-navy-400">Shared across every color — set a price adjustment if a size costs more</p>
-            </div>
-            <button type="button" onClick={addSize} className="flex items-center gap-1 text-sm text-ocean hover:underline">
-              <HiOutlinePlus className="w-4 h-4" /> Add size
-            </button>
+      {/* Sizes: independent of colors */}
+      <div className="border border-navy-100 rounded p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <p className="text-sm font-medium text-navy-700">Sizes (optional)</p>
+            <p className="text-xs text-navy-400">
+              Works with or without colors. Only fill in a price for sizes that cost something different — otherwise they use the base price.
+            </p>
           </div>
+          <button type="button" onClick={addSize} className="flex items-center gap-1 text-sm text-ocean hover:underline shrink-0">
+            <HiOutlinePlus className="w-4 h-4" /> Add size
+          </button>
+        </div>
 
-          <div className="space-y-2">
-            {sizes.map((size) => (
-              <div key={size.client_id} className="flex items-center gap-2">
-                <input
-                  placeholder="Size (e.g. 42)"
-                  value={size.size_value}
-                  onChange={(e) => updateSize(size.client_id, "size_value", e.target.value)}
-                  className="flex-1 border border-navy-100 rounded px-3 py-2 text-sm"
-                />
-                <input
-                  type="number"
-                  placeholder="+/- price"
-                  value={size.price_adjustment === 0 ? "" : size.price_adjustment}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    updateSize(size.client_id, "price_adjustment", val === "" ? 0 : Number(val));
-                  }}
-                  className="w-28 border border-navy-100 rounded px-3 py-2 text-sm"
-                />
-                <button type="button" onClick={() => removeSize(size.client_id)} className="text-red-500" aria-label="Remove size">
-                  <HiOutlineTrash className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
-            {sizes.length === 0 && <p className="text-xs text-navy-400">No sizes yet.</p>}
-          </div>
+        <div className="space-y-2">
+          {sizes.map((size) => (
+            <div key={size.client_id} className="flex items-center gap-2">
+              <input
+                placeholder="Size (e.g. 42 or XL)"
+                value={size.size_value}
+                onChange={(e) => updateSizeValue(size.client_id, e.target.value)}
+                className="flex-1 border border-navy-100 rounded px-3 py-2 text-sm"
+              />
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="Price (GH₵)"
+                value={size.price ?? ""}
+                onChange={(e) => updateSizePrice(size.client_id, e.target.value)}
+                className="w-32 border border-navy-100 rounded px-3 py-2 text-sm"
+              />
+              <button type="button" onClick={() => removeSize(size.client_id)} className="text-red-500" aria-label="Remove size">
+                <HiOutlineTrash className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+          {sizes.length === 0 && <p className="text-xs text-navy-400">No sizes added.</p>}
+        </div>
+      </div>
+
+      {/* Availability grid: only when there are both colors and sizes */}
+      {hasColors && hasSizes && (
+        <div className="border border-navy-100 rounded p-4 overflow-x-auto">
+          <p className="text-sm font-medium text-navy-700">Availability</p>
+          <p className="text-xs text-navy-400 mb-3">
+            Everything is available by default. Untick any color and size combination that doesn&apos;t exist — customers won&apos;t be able to pick it.
+          </p>
+          <table className="text-sm">
+            <thead>
+              <tr>
+                <th className="text-left pr-4 pb-2 text-navy-500 font-normal">Color</th>
+                {sizes.map((size) => (
+                  <th key={size.client_id} className="pb-2 px-3 text-navy-500 font-normal">
+                    {size.size_value || "—"}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {colors.map((color) => (
+                <tr key={color.client_id} className="border-t border-navy-50">
+                  <td className="py-2 pr-4">
+                    <div className="flex items-center gap-2">
+                      {color.image_url && (
+                        <div className="relative w-6 h-6 rounded overflow-hidden shrink-0">
+                          <Image src={color.image_url} alt="" fill className="object-cover" sizes="24px" />
+                        </div>
+                      )}
+                      <span className="text-navy-700">{color.color_name || "—"}</span>
+                    </div>
+                  </td>
+                  {sizes.map((size) => (
+                    <td key={size.client_id} className="px-3 py-2 text-center">
+                      <input
+                        type="checkbox"
+                        checked={!unavailable.has(comboKey(color.client_id, size.client_id))}
+                        onChange={() => toggleCombo(color.client_id, size.client_id)}
+                        aria-label={`${color.color_name} in ${size.size_value}`}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
+      {/* Plain image gallery: only when there are no colors */}
       {!hasColors && (
         <div>
           <label className="block text-sm text-navy-700 mb-2">Product images</label>
