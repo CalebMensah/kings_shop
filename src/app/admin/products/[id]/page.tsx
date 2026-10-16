@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { ProductForm } from "@/components/admin/ProductForm";
+import { ShareButton } from "@/components/storefront/ShareButton";
 import { createClient } from "@/lib/supabase/server";
+import { getLeafCategoryOptions } from "@/lib/categories";
 
 export default async function EditProductPage({
   params,
@@ -11,8 +13,8 @@ export default async function EditProductPage({
   const { id } = await params;
   const supabase = await createClient();
 
-  const [{ data: categories }, { data: product }] = await Promise.all([
-    supabase.from("categories").select("id, name").order("name"),
+  const [categories, { data: product }] = await Promise.all([
+    getLeafCategoryOptions(supabase),
     supabase
       .from("products")
       .select(`*,
@@ -25,10 +27,16 @@ export default async function EditProductPage({
 
   if (!product) notFound();
 
+  const productUrl = `${process.env.NEXT_PUBLIC_APP_URL}/product/${product.slug}`;
+
   return (
     <div>
-      <PageHeader title="Edit product" description={product.name} />
-      <ProductForm categories={categories ?? []} existingProduct={product} />
+      <PageHeader
+        title="Edit product"
+        description={product.name}
+        action={<ShareButton productName={product.name} productUrl={productUrl} />}
+      />
+      <ProductForm categories={categories} existingProduct={product} />
     </div>
   );
 }
