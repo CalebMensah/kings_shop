@@ -11,7 +11,7 @@ export const BUSINESS = {
   instagram: "", // TODO: add handle if they have one
   tiktok: "", // TODO: add handle if they have one
   location: "Master Sam, opposite Ankokeen Trading Enterprise, Cape Coast",
-    categories: [
+  categories: [
     "Fashion & Apparel",
     "Electronics & Gadgets",
     "Home, Kitchen & Living",
@@ -21,15 +21,15 @@ export const BUSINESS = {
     "Auto & Industrial",
     "Lifestyle & More",
   ],
+}; // <-- this was missing
 
 export const POLICIES = {
   preorder:
     "Preorder items are purchased specifically according to customers' orders. Once an order has been confirmed and the purchasing process has commenced, cancellations may not be accepted.",
   orderConfirmation:
     "Customers are responsible for confirming their orders before payment. Once an order has been processed for sourcing, cancellation may not be possible.",
-  refund:
-    `All orders placed with ${BUSINESS.name} are considered final once the order has been confirmed and payment has been made. Customers cannot request a refund simply because they have changed their mind, no longer need the item, or no longer wish to wait for their order. However, refunds may be issued if the item arrives faulty/damaged, or if the item is confirmed unavailable or lost during the importation process. Customers may be required to provide clear photos or videos of faulty/damaged items when making a claim. Minor differences in colour, size, appearance, or packaging due to supplier specifications may not qualify for a refund.`,
-} as const; // TODO: confirm Kings agrees to these policy terms
+  refund: `All orders placed with ${BUSINESS.name} are considered final once the order has been confirmed and payment has been made. Customers cannot request a refund simply because they have changed their mind, no longer need the item, or no longer wish to wait for their order. However, refunds may be issued if the item arrives faulty/damaged, or if the item is confirmed unavailable or lost during the importation process. Customers may be required to provide clear photos or videos of faulty/damaged items when making a claim. Minor differences in colour, size, appearance, or packaging due to supplier specifications may not qualify for a refund.`,
+} as const;
 
 export const SHIPPING_INFO = {
   disclaimer:
@@ -37,5 +37,5 @@ export const SHIPPING_INFO = {
   shortNote: "Price excludes shipping",
   method: "",
   timeline: "",
-  whatsappGroupUrl: "" as string, // TODO: Kings' own shipping-updates group link, if they use one
+  whatsappGroupUrl: "" as string,
 };
