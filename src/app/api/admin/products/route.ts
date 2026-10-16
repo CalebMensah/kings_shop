@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { productSchema } from "@/lib/validation/product";
+import { saveVariants } from "@/lib/product-variants";
 
 function slugify(name: string) {
   return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -31,19 +32,16 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json();
-  console.log("PRODUCT CREATE — incoming body:", JSON.stringify(body)); // TEMP
-
   const parsed = productSchema.safeParse(body);
   if (!parsed.success) {
-    console.error("PRODUCT CREATE — validation failed:", JSON.stringify(parsed.error.flatten())); // TEMP
+    console.error("PRODUCT CREATE — validation failed:", JSON.stringify(parsed.error.flatten()));
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { colors, sizes, ...productData } = parsed.data;
+  const { colors, sizes, unavailable, ...productData } = parsed.data;
   const images: string[] = body.images ?? [];
 
   if (images.length === 0 && colors.length === 0) {
-    console.error("PRODUCT CREATE — no images or colors provided"); // TEMP
     return NextResponse.json({ error: "Add at least one product image, or a color with a photo" }, { status: 400 });
   }
 
@@ -58,7 +56,7 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (productError) {
-    console.error("PRODUCT CREATE — insert failed:", productError.message); // TEMP
+    console.error("PRODUCT CREATE — insert failed:", productError.message);
     return NextResponse.json({ error: productError.message }, { status: 500 });
   }
 
@@ -68,24 +66,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (colors.length > 0) {
-    const { error: colorError } = await supabase
-      .from("product_colors")
-      .insert(colors.map((c, i) => ({ product_id: product.id, color_name: c.color_name, image_url: c.image_url, sort_order: i })));
-    if (colorError) {
-      console.error("PRODUCT CREATE — color insert failed:", colorError.message); // TEMP
-      return NextResponse.json({ error: colorError.message }, { status: 500 });
-    }
-  }
-
-  if (sizes.length > 0) {
-    const { error: sizeError } = await supabase
-      .from("product_sizes")
-      .insert(sizes.map((s, i) => ({ product_id: product.id, size_value: s.size_value, price_adjustment: s.price_adjustment, sort_order: i })));
-    if (sizeError) {
-      console.error("PRODUCT CREATE — size insert failed:", sizeError.message); // TEMP
-      return NextResponse.json({ error: sizeError.message }, { status: 500 });
-    }
+  const variantError = await saveVariants(supabase, product.id, colors, sizes, unavailable);
+  if (variantError) {
+    console.error("PRODUCT CREATE — variants failed:", variantError);
+    return NextResponse.json({ error: variantError }, { status: 500 });
   }
 
   return NextResponse.json({ product }, { status: 201 });
