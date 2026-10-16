@@ -11,13 +11,16 @@ export const BUSINESS = {
   instagram: "", // TODO: add handle if they have one
   tiktok: "", // TODO: add handle if they have one
   location: "Master Sam, opposite Ankokeen Trading Enterprise, Cape Coast",
-  categories: [
-    "Fashion & Accessories",
-    "Shoes & Bags",
+    categories: [
+    "Fashion & Apparel",
     "Electronics & Gadgets",
-    "Home & Kitchen",
-  ], // TODO: confirm with the client
-} as const;
+    "Home, Kitchen & Living",
+    "Beauty & Personal Care",
+    "Kids & Baby",
+    "Health & Fitness",
+    "Auto & Industrial",
+    "Lifestyle & More",
+  ],
 
 export const POLICIES = {
   preorder:
