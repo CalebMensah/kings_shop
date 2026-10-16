@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+}import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { productSchema } from "@/lib/validation/product";
+import { saveVariants } from "@/lib/product-variants";
 
 export async function GET(
   _request: NextRequest,
@@ -15,25 +16,17 @@ export async function GET(
     .from("products")
     .select(`*,
       product_images(id, image_url, sort_order),
-      product_colors(id, color_name, image_url, sort_order, product_color_size_stock(id, size_id, stock_quantity)),
-      product_sizes(id, size_value, price_adjustment, sort_order)`)
+      product_colors(id, color_name, image_url, sort_order, product_unavailable_combos(size_id)),
+      product_sizes(id, size_value, price, sort_order)`)
     .eq("id", id)
     .single();
 
-  if (error || !raw) {
-    return NextResponse.json({ error: error?.message ?? "Not found" }, { status: 404 });
-  }
+  if (error || !raw) return NextResponse.json({ error: error?.message ?? "Not found" }, { status: 404 });
 
-  // Flatten color -> stock nesting into a simple color_id/size_id/stock_quantity array,
-  // since product_color_size_stock has no direct FK to products, only to product_colors.
   const product = {
     ...raw,
-    product_color_size_stock: raw.product_colors.flatMap((c: any) =>
-      (c.product_color_size_stock ?? []).map((s: any) => ({
-        color_id: c.id,
-        size_id: s.size_id,
-        stock_quantity: s.stock_quantity,
-      }))
+    unavailable_combos: (raw.product_colors ?? []).flatMap((c: any) =>
+      (c.product_unavailable_combos ?? []).map((u: any) => ({ color_id: c.id, size_id: u.size_id }))
     ),
   };
 
@@ -52,10 +45,11 @@ export async function PATCH(
   const body = await request.json();
   const parsed = productSchema.partial().safeParse(body);
   if (!parsed.success) {
+    console.error("PRODUCT UPDATE — validation failed:", JSON.stringify(parsed.error.flatten()));
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { colors, sizes, ...productData } = parsed.data;
+  const { colors, sizes, unavailable, ...productData } = parsed.data;
 
   const { data: product, error } = await supabase
     .from("products")
@@ -76,29 +70,18 @@ export async function PATCH(
     if (imageRows.length > 0) await supabase.from("product_images").insert(imageRows);
   }
 
-  // Colors/sizes/stock: replace wholesale on edit (cascade delete handles cleanup)
   if (colors !== undefined) {
-    await supabase.from("product_colors").delete().eq("product_id", id); // cascades to stock rows referencing these colors
-    await supabase.from("product_sizes").delete().eq("product_id", id); // cascades to remaining stock rows
-
-    const colorIdMap = new Map<string, string>();
-    if (colors.length > 0) {
-      const { data: insertedColors, error: colorError } = await supabase
-        .from("product_colors")
-        .insert(colors.map((c, i) => ({ product_id: id, color_name: c.color_name, image_url: c.image_url, sort_order: i })))
-        .select();
-      if (colorError) return NextResponse.json({ error: colorError.message }, { status: 500 });
-      insertedColors.forEach((row, i) => colorIdMap.set(colors[i].client_id, row.id));
+    // Replace colors, sizes and combinations as one set (combinations are removed automatically with them)
+    const { error: delColors } = await supabase.from("product_colors").delete().eq("product_id", id);
+    const { error: delSizes } = await supabase.from("product_sizes").delete().eq("product_id", id);
+    if (delColors || delSizes) {
+      return NextResponse.json({ error: (delColors ?? delSizes)!.message }, { status: 500 });
     }
 
-    const sizeIdMap = new Map<string, string>();
-    if (sizes && sizes.length > 0) {
-      const { data: insertedSizes, error: sizeError } = await supabase
-        .from("product_sizes")
-        .insert(sizes.map((s, i) => ({ product_id: id, size_value: s.size_value, price_adjustment: s.price_adjustment, sort_order: i })))
-        .select();
-      if (sizeError) return NextResponse.json({ error: sizeError.message }, { status: 500 });
-      insertedSizes.forEach((row, i) => sizeIdMap.set(sizes[i].client_id, row.id));
+    const variantError = await saveVariants(supabase, id, colors, sizes ?? [], unavailable ?? []);
+    if (variantError) {
+      console.error("PRODUCT UPDATE — variants failed:", variantError);
+      return NextResponse.json({ error: variantError }, { status: 500 });
     }
   }
 
