@@ -9,7 +9,13 @@ export const productColorSchema = z.object({
 export const productSizeSchema = z.object({
   client_id: z.string(),
   size_value: z.string().trim().min(1, "Size is required").max(30),
-  price_adjustment: z.coerce.number().default(0),
+  // null = use the product's base price
+  price: z.number().min(0, "Price can't be negative").nullable().default(null),
+});
+
+export const unavailableComboSchema = z.object({
+  color_client_id: z.string(),
+  size_client_id: z.string(),
 });
 
 export const productSchema = z.object({
@@ -22,6 +28,7 @@ export const productSchema = z.object({
   status: z.enum(["active", "draft", "archived"]).default("active"),
   colors: z.array(productColorSchema).optional().default([]),
   sizes: z.array(productSizeSchema).optional().default([]),
+  unavailable: z.array(unavailableComboSchema).optional().default([]),
 });
 
 export type ProductInput = z.infer<typeof productSchema>;
