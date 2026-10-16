@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Image from "next/image";
 import { useCart } from "@/lib/cart-context";
 import { SHIPPING_INFO } from "@/lib/constants";
@@ -8,7 +8,8 @@ import { HiOutlineClock, HiOutlineCheck, HiOutlineShoppingBag, HiOutlineMinus, H
 
 type ProductImage = { image_url: string; sort_order: number };
 type ProductColor = { id: string; color_name: string; image_url: string; sort_order: number };
-type ProductSize = { id: string; size_value: string; price_adjustment: number; sort_order: number };
+type ProductSize = { id: string; size_value: string; price: number | null; sort_order: number };
+type UnavailableCombo = { color_id: string; size_id: string };
 
 export function ProductDetail({
   product,
@@ -23,37 +24,70 @@ export function ProductDetail({
     product_images: ProductImage[];
     product_colors: ProductColor[];
     product_sizes: ProductSize[];
+    unavailable_combos: UnavailableCombo[];
   };
 }) {
   const { addItem } = useCart();
-  const hasColors = product.product_colors.length > 0;
-  const hasSizes = product.product_sizes.length > 0;
 
   const images = [...product.product_images].sort((a, b) => a.sort_order - b.sort_order);
   const colors = [...product.product_colors].sort((a, b) => a.sort_order - b.sort_order);
   const sizes = [...product.product_sizes].sort((a, b) => a.sort_order - b.sort_order);
+  const hasColors = colors.length > 0;
+  const hasSizes = sizes.length > 0;
 
-  // Color defaults to the first one (it's just a visual swatch — fine to preselect).
-  // Size is intentionally NOT preselected — auto-picking a size would silently
-  // apply its price adjustment before the customer chose anything.
   const [selectedColor, setSelectedColor] = useState<ProductColor | null>(colors[0] ?? null);
   const [selectedSize, setSelectedSize] = useState<ProductSize | null>(null);
   const [activeImage, setActiveImage] = useState(0);
   const [quantity, setQuantity] = useState(product.moq);
   const [added, setAdded] = useState(false);
 
-  const effectivePrice = product.price + (selectedSize?.price_adjustment ?? 0);
+  const unavailable = useMemo(
+    () => new Set(product.unavailable_combos.map((u) => `${u.color_id}::${u.size_id}`)),
+    [product.unavailable_combos]
+  );
+
+  // A size's own price replaces the base price; no price means use the base price
+  const sizePrice = (size: ProductSize) => size.price ?? product.price;
+  const prices = sizes.map(sizePrice);
+  const minPrice = prices.length > 0 ? Math.min(...prices) : product.price;
+  const maxPrice = prices.length > 0 ? Math.max(...prices) : product.price;
+  const pricesDiffer = minPrice !== maxPrice;
+
+  const isAvailable = (size: ProductSize) =>
+    !selectedColor || !unavailable.has(`${selectedColor.id}::${size.id}`);
+  const noSizeAvailable = hasSizes && sizes.every((s) => !isAvailable(s));
+
+  const effectivePrice = selectedSize ? sizePrice(selectedSize) : hasSizes ? minPrice : product.price;
+  const showFrom = hasSizes && !selectedSize && pricesDiffer;
+
   const displayedImage = hasColors ? selectedColor?.image_url : images[activeImage]?.image_url;
 
-  // Can add to cart once: a color is picked (if colors exist) AND a size is picked (if sizes exist)
-  const needsColor = hasColors && !selectedColor;
   const needsSize = hasSizes && !selectedSize;
-  const canAdd = !needsColor && !needsSize;
+  const canAdd = !needsSize && !noSizeAvailable;
+  const buttonLabel = added
+    ? "Added"
+    : noSizeAvailable
+      ? "Not available"
+      : needsSize
+        ? "Select a size"
+        : "Preorder now";
+
+  function handleSelectColor(color: ProductColor) {
+    setSelectedColor(color);
+    // Drop the chosen size if this color doesn't come in it
+    if (selectedSize && unavailable.has(`${color.id}::${selectedSize.id}`)) {
+      setSelectedSize(null);
+    }
+  }
 
   function handleAddToCart() {
+    if (!canAdd) return;
     addItem({
       productId: product.id,
-      variantId: selectedColor && selectedSize ? `${selectedColor.id}::${selectedSize.id}` : undefined,
+      variantId:
+        selectedColor || selectedSize
+          ? `${selectedColor?.id ?? "none"}::${selectedSize?.id ?? "none"}`
+          : undefined,
       colorId: selectedColor?.id,
       sizeId: selectedSize?.id,
       name: product.name,
@@ -99,10 +133,8 @@ export function ProductDetail({
 
         <h1 className="font-display text-2xl md:text-3xl text-navy-900">{product.name}</h1>
         <p className="text-lg md:text-xl text-navy-700 mt-2">
+          {showFrom && <span className="text-xs text-navy-400 font-normal mr-1.5">from</span>}
           GH₵{effectivePrice.toFixed(2)}
-          {hasSizes && !selectedSize && (
-            <span className="text-xs text-navy-400 font-normal ml-2">from</span>
-          )}
         </p>
 
         <p className="text-xs text-navy-400 mt-2 leading-relaxed">{SHIPPING_INFO.shortNote}</p>
@@ -124,7 +156,7 @@ export function ProductDetail({
               {colors.map((color) => (
                 <button
                   key={color.id}
-                  onClick={() => setSelectedColor(color)}
+                  onClick={() => handleSelectColor(color)}
                   className={`relative w-14 h-14 rounded border-2 overflow-hidden ${
                     selectedColor?.id === color.id ? "border-navy-800" : "border-navy-100"
                   }`}
@@ -140,28 +172,34 @@ export function ProductDetail({
         {hasSizes && (
           <div className="mt-5">
             <p className="text-sm text-navy-700 mb-2">
-              Size{!selectedSize && <span className="text-red-500"> · required</span>}
+              Size{!selectedSize && !noSizeAvailable && <span className="text-red-500"> · required</span>}
             </p>
             <div className="flex gap-2 flex-wrap">
-              {sizes.map((size) => (
-                <button
-                  key={size.id}
-                  onClick={() => setSelectedSize(size)}
-                  className={`text-sm px-3 py-1.5 rounded border transition ${
-                    selectedSize?.id === size.id
-                      ? "border-navy-800 bg-navy-800 text-white"
-                      : "border-navy-100 text-navy-700 hover:border-navy-300"
-                  }`}
-                >
-                  {size.size_value}
-                  {size.price_adjustment !== 0 && (
-                    <span className="text-[10px] opacity-70 ml-1">
-                      ({size.price_adjustment > 0 ? "+" : ""}{size.price_adjustment})
-                    </span>
-                  )}
-                </button>
-              ))}
+              {sizes.map((size) => {
+                const available = isAvailable(size);
+                return (
+                  <button
+                    key={size.id}
+                    onClick={() => setSelectedSize(size)}
+                    disabled={!available}
+                    title={!available && selectedColor ? `Not available in ${selectedColor.color_name}` : undefined}
+                    className={`text-sm px-3 py-1.5 rounded border transition text-center leading-tight disabled:cursor-not-allowed disabled:opacity-40 disabled:line-through ${
+                      selectedSize?.id === size.id
+                        ? "border-navy-800 bg-navy-800 text-white"
+                        : "border-navy-100 text-navy-700 hover:border-navy-300"
+                    }`}
+                  >
+                    {size.size_value}
+                    {pricesDiffer && (
+                      <span className="block text-[10px] opacity-70 no-underline">GH₵{sizePrice(size)}</span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
+            {noSizeAvailable && selectedColor && (
+              <p className="text-xs text-red-500 mt-2">No sizes available in {selectedColor.color_name}. Try another color.</p>
+            )}
           </div>
         )}
 
@@ -188,7 +226,7 @@ export function ProductDetail({
           className="hidden md:flex mt-6 items-center justify-center gap-2 bg-navy-800 text-white px-8 py-3 rounded text-sm font-medium hover:bg-navy-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {added ? <HiOutlineCheck className="w-4 h-4" /> : <HiOutlineShoppingBag className="w-4 h-4" />}
-          {added ? "Added" : needsSize ? "Select a size" : needsColor ? "Select a color" : "Preorder now"}
+          {buttonLabel}
         </button>
       </div>
 
@@ -199,7 +237,7 @@ export function ProductDetail({
           className="w-full flex items-center justify-center gap-2 bg-navy-800 text-white py-3 rounded text-sm font-medium disabled:opacity-40"
         >
           {added ? <HiOutlineCheck className="w-4 h-4" /> : <HiOutlineShoppingBag className="w-4 h-4" />}
-          {added ? "Added" : needsSize ? "Select a size" : needsColor ? "Select a color" : `Preorder now · GH₵${(effectivePrice * quantity).toFixed(2)}`}
+          {canAdd && !added ? `Preorder now · GH₵${(effectivePrice * quantity).toFixed(2)}` : buttonLabel}
         </button>
       </div>
     </div>
