@@ -1,4 +1,4 @@
-}import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { productSchema } from "@/lib/validation/product";
 import { saveVariants } from "@/lib/product-variants";
