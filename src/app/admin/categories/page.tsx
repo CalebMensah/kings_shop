@@ -7,11 +7,15 @@ export default async function CategoriesPage() {
   const { data: categories } = await supabase
     .from("categories")
     .select("*, products(count)")
+    .order("sort_order")
     .order("name");
 
   return (
     <div>
-      <PageHeader title="Categories" description="Organize how products are grouped" />
+      <PageHeader
+        title="Categories"
+        description="Main categories and their subcategories — each can have its own image"
+      />
       <CategoryManager categories={categories ?? []} />
     </div>
   );
