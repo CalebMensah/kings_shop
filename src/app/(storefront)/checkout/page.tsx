@@ -48,10 +48,9 @@ export default function CheckoutPage() {
         paymentChannel,
         notes: notes || undefined,
         agreedToPolicy,
-        items: items.map((i) => ({
+          items: items.map((i) => ({
           productId: i.productId,
-          colorId: i.colorId,
-          sizeId: i.sizeId,
+          variantId: i.variantId,
           quantity: i.quantity,
         })),
       }),
