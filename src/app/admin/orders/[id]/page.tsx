@@ -57,9 +57,9 @@ export default async function OrderDetailPage({
                       </td>
                       <td className="py-2 text-navy-700">
                         <p>{item.product_name}</p>
-                        {(item.color_name || item.size_value) && (
+                            {(item.variant_label || item.color_name || item.size_value) && (
                           <p className="text-xs text-navy-400 mt-0.5">
-                            {[item.color_name, item.size_value].filter(Boolean).join(" / ")}
+                            {item.variant_label ?? [item.color_name, item.size_value].filter(Boolean).join(" / ")}
                           </p>
                         )}
                       </td>
