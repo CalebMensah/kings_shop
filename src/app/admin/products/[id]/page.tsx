@@ -13,26 +13,19 @@ export default async function EditProductPage({
   const { id } = await params;
   const supabase = await createClient();
 
-  const [categories, { data: raw }] = await Promise.all([
+  const [categories, { data: product }] = await Promise.all([
     getLeafCategoryOptions(supabase),
     supabase
       .from("products")
       .select(`*,
-        product_images(image_url),
-        product_colors(id, color_name, image_url, sort_order, product_unavailable_combos(size_id)),
-        product_sizes(id, size_value, price, sort_order)`)
+        product_images(image_url, sort_order),
+        product_specs(id, name, sort_order, product_spec_options(id, name, image_url, sort_order)),
+        product_variants(id, price, is_available, product_variant_options(option_id))`)
       .eq("id", id)
       .single(),
   ]);
 
-  if (!raw) notFound();
-
-  const product = {
-    ...raw,
-    unavailable_combos: (raw.product_colors ?? []).flatMap((c: any) =>
-      (c.product_unavailable_combos ?? []).map((u: any) => ({ color_id: c.id, size_id: u.size_id }))
-    ),
-  };
+  if (!product) notFound();
 
   const productUrl = `${process.env.NEXT_PUBLIC_APP_URL}/product/${product.slug}`;
 
