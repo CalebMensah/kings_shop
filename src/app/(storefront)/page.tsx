@@ -17,7 +17,7 @@ export default async function HomePage() {
     getMainCategories(supabase),
     supabase
       .from("products")
-      .select("slug, name, price, product_images(image_url, sort_order), product_colors(image_url, sort_order)")
+      .select("slug, name, price, product_images(image_url, sort_order), product_specs(sort_order, product_spec_options(image_url, sort_order)), product_variants(price, is_available)")
       .eq("status", "active")
       .order("created_at", { ascending: false })
       .limit(8),
