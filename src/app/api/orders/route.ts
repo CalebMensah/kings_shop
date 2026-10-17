@@ -11,13 +11,12 @@ const orderSchema = z.object({
   deliveryAddress: z.string().trim().max(300).optional(),
   paymentChannel: z.enum(["mobile_money", "bank_transfer"]),
   notes: z.string().trim().max(500).optional(),
-  agreedToPolicy: z.literal(true, { message: "You must agree to the terms" }),
+  agreedToPolicy: z.literal(true, { errorMap: () => ({ message: "You must agree to the terms" }) }),
   items: z
     .array(
       z.object({
         productId: z.string().uuid(),
-        colorId: z.string().uuid().optional(),
-        sizeId: z.string().uuid().optional(),
+        variantId: z.string().uuid().optional(),
         quantity: z.number().int().positive().max(50),
       })
     )
@@ -47,8 +46,6 @@ export async function POST(request: NextRequest) {
   const { data: settings } = await supabase.from("store_settings").select("delivery_fee_default").single();
   const deliveryFee = data.fulfillmentType === "delivery" ? (settings?.delivery_fee_default ?? 0) : 0;
 
-  // All checkout orders are instant payment now — payment_method is always momo_auto,
-  // payment_channel tells Paystack whether to show Mobile Money or Bank Transfer
   const { data: result, error } = await supabase.rpc("place_order", {
     p_customer_name: data.customerName,
     p_customer_phone: data.customerPhone,
@@ -61,8 +58,7 @@ export async function POST(request: NextRequest) {
     p_delivery_fee: deliveryFee,
     p_items: data.items.map((i) => ({
       product_id: i.productId,
-      color_id: i.colorId ?? null,
-      size_id: i.sizeId ?? null,
+      variant_id: i.variantId ?? null,
       quantity: i.quantity,
     })),
   });
@@ -70,8 +66,6 @@ export async function POST(request: NextRequest) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
-
-  // TODO: trigger order-received email/SMS once notifications service is built
 
   return NextResponse.json({ order: result }, { status: 201 });
 }
