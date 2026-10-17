@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ProductDetail } from "@/components/storefront/ProductDetail";
 import { getCurrentBatch } from "@/lib/batches";
 import { BatchBanner } from "@/components/storefront/BatchBanner";
+import { firstSpecImage } from "@/lib/specs";
 import { BUSINESS } from "@/lib/constants";
 
 const fetchProduct = cache(async (slug: string) => {
@@ -13,8 +14,8 @@ const fetchProduct = cache(async (slug: string) => {
     .from("products")
     .select(`*,
       product_images(image_url, sort_order),
-      product_colors(id, color_name, image_url, sort_order, product_unavailable_combos(size_id)),
-      product_sizes(id, size_value, price, sort_order)`)
+      product_specs(id, name, sort_order, product_spec_options(id, name, image_url, sort_order)),
+      product_variants(id, price, is_available, product_variant_options(option_id))`)
     .eq("slug", slug)
     .eq("status", "active")
     .single();
@@ -30,7 +31,9 @@ export async function generateMetadata({
 
   if (!product) return { title: `Product not found | ${BUSINESS.name}` };
 
-  const firstImage = product.product_colors?.[0]?.image_url ?? product.product_images?.[0]?.image_url;
+  const firstImage =
+    [...(product.product_images ?? [])].sort((a: any, b: any) => a.sort_order - b.sort_order)[0]?.image_url ??
+    firstSpecImage(product.product_specs);
   const url = `${process.env.NEXT_PUBLIC_APP_URL}/product/${slug}`;
 
   return {
@@ -60,15 +63,8 @@ export default async function ProductPage({
   const supabase = await createClient();
   const batch = await getCurrentBatch(supabase);
 
-  const { data: raw, error } = await fetchProduct(slug);
-  if (error || !raw) notFound();
-
-  const product = {
-    ...raw,
-    unavailable_combos: (raw.product_colors ?? []).flatMap((c: any) =>
-      (c.product_unavailable_combos ?? []).map((u: any) => ({ color_id: c.id, size_id: u.size_id }))
-    ),
-  };
+  const { data: product, error } = await fetchProduct(slug);
+  if (error || !product) notFound();
 
   return (
     <div>
