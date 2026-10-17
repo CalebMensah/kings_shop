@@ -3,6 +3,7 @@ import Image from "next/image";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { ProductRowActions } from "@/components/admin/ProductRowActions";
 import { createClient } from "@/lib/supabase/server";
+import { firstSpecImage } from "@/lib/specs";
 import { HiOutlinePlus } from "react-icons/hi";
 
 export default async function ProductsListPage() {
@@ -10,7 +11,7 @@ export default async function ProductsListPage() {
 
   const { data: products } = await supabase
     .from("products")
-    .select("id, name, slug, price, status, product_images(image_url, sort_order), product_colors(image_url, sort_order)")
+    .select("id, name, slug, price, status, product_images(image_url, sort_order), product_specs(sort_order, product_spec_options(image_url, sort_order))")
     .neq("status", "archived")
     .order("created_at", { ascending: false });
 
@@ -35,7 +36,7 @@ export default async function ProductsListPage() {
           <thead className="bg-navy-50 text-navy-500 text-left">
             <tr>
               <th className="px-4 py-3 font-medium">Product</th>
-              <th className="px-4 py-3 font-medium">Price</th>
+              <th className="px-4 py-3 font-medium">Base price</th>
               <th className="px-4 py-3 font-medium">Status</th>
               <th className="px-4 py-3"></th>
             </tr>
@@ -43,10 +44,7 @@ export default async function ProductsListPage() {
           <tbody>
             {products?.map((product) => {
               const productImage = [...(product.product_images ?? [])].sort((a, b) => a.sort_order - b.sort_order)[0];
-              const fallbackColorImage = !productImage
-                ? [...(product.product_colors ?? [])].sort((a, b) => a.sort_order - b.sort_order)[0]
-                : undefined;
-              const displayUrl = productImage?.image_url ?? fallbackColorImage?.image_url;
+              const displayUrl = productImage?.image_url ?? firstSpecImage(product.product_specs);
 
               return (
                 <tr key={product.id} className="border-t border-navy-50">
