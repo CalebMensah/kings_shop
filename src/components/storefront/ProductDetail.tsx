@@ -7,9 +7,16 @@ import { SHIPPING_INFO } from "@/lib/constants";
 import { HiOutlineClock, HiOutlineCheck, HiOutlineShoppingBag, HiOutlineMinus, HiOutlinePlus } from "react-icons/hi";
 
 type ProductImage = { image_url: string; sort_order: number };
-type ProductColor = { id: string; color_name: string; image_url: string; sort_order: number };
-type ProductSize = { id: string; size_value: string; price: number | null; sort_order: number };
-type UnavailableCombo = { color_id: string; size_id: string };
+type SpecOption = { id: string; name: string; image_url: string | null; sort_order: number };
+type Spec = { id: string; name: string; sort_order: number; product_spec_options: SpecOption[] };
+type RawVariant = {
+  id: string;
+  price: number | null;
+  is_available: boolean;
+  product_variant_options: { option_id: string }[];
+};
+
+const bySort = (a: { sort_order: number }, b: { sort_order: number }) => a.sort_order - b.sort_order;
 
 export function ProductDetail({
   product,
@@ -22,76 +29,124 @@ export function ProductDetail({
     moq: number;
     preorder_fulfillment_note: string | null;
     product_images: ProductImage[];
-    product_colors: ProductColor[];
-    product_sizes: ProductSize[];
-    unavailable_combos: UnavailableCombo[];
+    product_specs: Spec[];
+    product_variants: RawVariant[];
   };
 }) {
   const { addItem } = useCart();
 
-  const images = [...product.product_images].sort((a, b) => a.sort_order - b.sort_order);
-  const colors = [...product.product_colors].sort((a, b) => a.sort_order - b.sort_order);
-  const sizes = [...product.product_sizes].sort((a, b) => a.sort_order - b.sort_order);
-  const hasColors = colors.length > 0;
-  const hasSizes = sizes.length > 0;
+  const images = useMemo(() => [...product.product_images].sort(bySort), [product.product_images]);
 
-  const [selectedColor, setSelectedColor] = useState<ProductColor | null>(colors[0] ?? null);
-  const [selectedSize, setSelectedSize] = useState<ProductSize | null>(null);
-  const [activeImage, setActiveImage] = useState(0);
+  const specs = useMemo(
+    () =>
+      [...product.product_specs].sort(bySort).map((s) => ({
+        ...s,
+        options: [...s.product_spec_options].sort(bySort),
+      })),
+    [product.product_specs]
+  );
+
+  const variants = useMemo(
+    () =>
+      product.product_variants.map((v) => ({
+        id: v.id,
+        price: v.price ?? product.price,
+        available: v.is_available,
+        optionIds: new Set(v.product_variant_options.map((o) => o.option_id)),
+      })),
+    [product.product_variants, product.price]
+  );
+
+  const availableVariants = useMemo(() => variants.filter((v) => v.available), [variants]);
+  const hasSpecs = specs.length > 0;
+
+  // specId -> optionId. Nothing is preselected, so the buyer has to choose.
+  const [selected, setSelected] = useState<Record<string, string>>({});
+  const [thumbIndex, setThumbIndex] = useState<number | null>(null);
   const [quantity, setQuantity] = useState(product.moq);
   const [added, setAdded] = useState(false);
 
-  const unavailable = useMemo(
-    () => new Set(product.unavailable_combos.map((u) => `${u.color_id}::${u.size_id}`)),
-    [product.unavailable_combos]
-  );
+  const selectedIds = Object.values(selected);
 
-  // A size's own price replaces the base price; no price means use the base price
-  const sizePrice = (size: ProductSize) => size.price ?? product.price;
-  const prices = sizes.map(sizePrice);
-  const minPrice = prices.length > 0 ? Math.min(...prices) : product.price;
-  const maxPrice = prices.length > 0 ? Math.max(...prices) : product.price;
-  const pricesDiffer = minPrice !== maxPrice;
+  function compatible(ids: string[]) {
+    return availableVariants.filter((v) => ids.every((id) => v.optionIds.has(id)));
+  }
 
-  const isAvailable = (size: ProductSize) =>
-    !selectedColor || !unavailable.has(`${selectedColor.id}::${size.id}`);
-  const noSizeAvailable = hasSizes && sizes.every((s) => !isAvailable(s));
+  // An option can be chosen if some available combination has it together with the other choices made
+  function isSelectable(specId: string, optionId: string) {
+    const others = Object.entries(selected)
+      .filter(([sid]) => sid !== specId)
+      .map(([, oid]) => oid);
+    return compatible([...others, optionId]).length > 0;
+  }
 
-  const effectivePrice = selectedSize ? sizePrice(selectedSize) : hasSizes ? minPrice : product.price;
-  const showFrom = hasSizes && !selectedSize && pricesDiffer;
+  function handleSelect(spec: { id: string }, option: SpecOption) {
+    const next: Record<string, string> = { [spec.id]: option.id };
+    const chosen = [option.id];
 
-  const displayedImage = hasColors ? selectedColor?.image_url : images[activeImage]?.image_url;
+    // Keep the other choices that still work with this one, drop the rest
+    for (const other of specs) {
+      if (other.id === spec.id) continue;
+      const optionId = selected[other.id];
+      if (optionId && compatible([...chosen, optionId]).length > 0) {
+        next[other.id] = optionId;
+        chosen.push(optionId);
+      }
+    }
 
-  const needsSize = hasSizes && !selectedSize;
-  const canAdd = !needsSize && !noSizeAvailable;
+    setSelected(next);
+    if (option.image_url) setThumbIndex(null);
+  }
+
+  const allSelected = hasSpecs && specs.every((s) => selected[s.id]);
+  const resolved = allSelected
+    ? availableVariants.find(
+        (v) => v.optionIds.size === selectedIds.length && selectedIds.every((id) => v.optionIds.has(id))
+      )
+    : undefined;
+
+  const candidatePrices = hasSpecs ? compatible(selectedIds).map((v) => v.price) : [];
+  const minPrice = candidatePrices.length > 0 ? Math.min(...candidatePrices) : product.price;
+  const maxPrice = candidatePrices.length > 0 ? Math.max(...candidatePrices) : product.price;
+  const effectivePrice = resolved ? resolved.price : minPrice;
+  const showFrom = hasSpecs && !resolved && minPrice !== maxPrice;
+
+  const noneAvailable = hasSpecs && availableVariants.length === 0;
+  const firstUnselected = specs.find((s) => !selected[s.id]);
+  const canAdd = !noneAvailable && (!hasSpecs || Boolean(resolved));
+
   const buttonLabel = added
     ? "Added"
-    : noSizeAvailable
+    : noneAvailable
       ? "Not available"
-      : needsSize
-        ? "Select a size"
-        : "Preorder now";
+      : firstUnselected
+        ? `Select ${firstUnselected.name}`
+        : hasSpecs && !resolved
+          ? "Not available"
+          : "Preorder now";
 
-  function handleSelectColor(color: ProductColor) {
-    setSelectedColor(color);
-    // Drop the chosen size if this color doesn't come in it
-    if (selectedSize && unavailable.has(`${color.id}::${selectedSize.id}`)) {
-      setSelectedSize(null);
-    }
-  }
+  const selectedOptionImage =
+    specs.map((s) => s.options.find((o) => o.id === selected[s.id])?.image_url).find(Boolean) ?? null;
+  const defaultOptionImage = specs.flatMap((s) => s.options).find((o) => o.image_url)?.image_url ?? null;
+
+  const displayedImage =
+    thumbIndex !== null
+      ? images[thumbIndex]?.image_url ?? null
+      : selectedOptionImage ?? images[0]?.image_url ?? defaultOptionImage;
 
   function handleAddToCart() {
     if (!canAdd) return;
+
+    const label = specs
+      .map((s) => s.options.find((o) => o.id === selected[s.id])?.name)
+      .filter(Boolean)
+      .join(" / ");
+
     addItem({
       productId: product.id,
-      variantId:
-        selectedColor || selectedSize
-          ? `${selectedColor?.id ?? "none"}::${selectedSize?.id ?? "none"}`
-          : undefined,
-      colorId: selectedColor?.id,
-      sizeId: selectedSize?.id,
+      variantId: resolved?.id,
       name: product.name,
-      variantLabel: [selectedColor?.color_name, selectedSize?.size_value].filter(Boolean).join(" / ") || undefined,
+      variantLabel: label || undefined,
       price: effectivePrice,
       image: displayedImage ?? null,
       quantity,
@@ -107,16 +162,25 @@ export function ProductDetail({
       <div>
         <div className="relative aspect-square bg-white border border-navy-100 mb-3">
           {displayedImage && (
-            <Image src={displayedImage} alt={product.name} fill className="object-cover" priority sizes="(max-width: 768px) 100vw, 50vw" />
+            <Image
+              src={displayedImage}
+              alt={product.name}
+              fill
+              className="object-cover"
+              priority
+              sizes="(max-width: 768px) 100vw, 50vw"
+            />
           )}
         </div>
-        {!hasColors && images.length > 1 && (
+        {images.length > 1 && (
           <div className="flex gap-2 overflow-x-auto">
             {images.map((img, i) => (
               <button
                 key={img.image_url}
-                onClick={() => setActiveImage(i)}
-                className={`relative w-14 h-14 shrink-0 border ${i === activeImage ? "border-navy-800" : "border-navy-100"}`}
+                onClick={() => setThumbIndex(i)}
+                className={`relative w-14 h-14 shrink-0 border ${
+                  displayedImage === img.image_url ? "border-navy-800" : "border-navy-100"
+                }`}
               >
                 <Image src={img.image_url} alt="" fill className="object-cover" sizes="56px" />
               </button>
@@ -139,69 +203,65 @@ export function ProductDetail({
 
         <p className="text-xs text-navy-400 mt-2 leading-relaxed">{SHIPPING_INFO.shortNote}</p>
 
-        {product.moq > 1 && (
-          <p className="text-xs text-navy-400 mt-1">Minimum order: {product.moq}</p>
-        )}
+        {product.moq > 1 && <p className="text-xs text-navy-400 mt-1">Minimum order: {product.moq}</p>}
 
         {product.description && (
-          <p className="text-navy-600 mt-4 leading-relaxed text-sm md:text-base">{product.description}</p>
+          <p className="text-navy-600 mt-4 leading-relaxed text-sm md:text-base whitespace-pre-line">
+            {product.description}
+          </p>
         )}
 
-        {hasColors && (
-          <div className="mt-5">
-            <p className="text-sm text-navy-700 mb-2">
-              Color{selectedColor ? `: ${selectedColor.color_name}` : ""}
-            </p>
-            <div className="flex gap-2 flex-wrap">
-              {colors.map((color) => (
-                <button
-                  key={color.id}
-                  onClick={() => handleSelectColor(color)}
-                  className={`relative w-14 h-14 rounded border-2 overflow-hidden ${
-                    selectedColor?.id === color.id ? "border-navy-800" : "border-navy-100"
-                  }`}
-                  aria-label={color.color_name}
-                >
-                  <Image src={color.image_url} alt={color.color_name} fill className="object-cover" sizes="56px" />
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+        {specs.map((spec) => {
+          const chosen = spec.options.find((o) => o.id === selected[spec.id]);
+          return (
+            <div key={spec.id} className="mt-5">
+              <p className="text-sm text-navy-700 mb-2">
+                {spec.name}
+                {chosen ? `: ${chosen.name}` : <span className="text-red-500"> · required</span>}
+              </p>
+              <div className="flex gap-2 flex-wrap">
+                {spec.options.map((option) => {
+                  const selectable = isSelectable(spec.id, option.id);
+                  const isChosen = selected[spec.id] === option.id;
+                  const title = selectable ? option.name : "Not available with your other choices";
 
-        {hasSizes && (
-          <div className="mt-5">
-            <p className="text-sm text-navy-700 mb-2">
-              Size{!selectedSize && !noSizeAvailable && <span className="text-red-500"> · required</span>}
-            </p>
-            <div className="flex gap-2 flex-wrap">
-              {sizes.map((size) => {
-                const available = isAvailable(size);
-                return (
-                  <button
-                    key={size.id}
-                    onClick={() => setSelectedSize(size)}
-                    disabled={!available}
-                    title={!available && selectedColor ? `Not available in ${selectedColor.color_name}` : undefined}
-                    className={`text-sm px-3 py-1.5 rounded border transition text-center leading-tight disabled:cursor-not-allowed disabled:opacity-40 disabled:line-through ${
-                      selectedSize?.id === size.id
-                        ? "border-navy-800 bg-navy-800 text-white"
-                        : "border-navy-100 text-navy-700 hover:border-navy-300"
-                    }`}
-                  >
-                    {size.size_value}
-                    {pricesDiffer && (
-                      <span className="block text-[10px] opacity-70 no-underline">GH₵{sizePrice(size)}</span>
-                    )}
-                  </button>
-                );
-              })}
+                  if (option.image_url) {
+                    return (
+                      <button
+                        key={option.id}
+                        onClick={() => handleSelect(spec, option)}
+                        disabled={!selectable}
+                        title={title}
+                        aria-label={option.name}
+                        className={`relative w-14 h-14 rounded border-2 overflow-hidden disabled:opacity-40 disabled:cursor-not-allowed ${
+                          isChosen ? "border-navy-800" : "border-navy-100"
+                        }`}
+                      >
+                        <Image src={option.image_url} alt={option.name} fill className="object-cover" sizes="56px" />
+                      </button>
+                    );
+                  }
+
+                  return (
+                    <button
+                      key={option.id}
+                      onClick={() => handleSelect(spec, option)}
+                      disabled={!selectable}
+                      title={title}
+                      className={`text-sm px-3 py-1.5 rounded border transition disabled:opacity-40 disabled:cursor-not-allowed disabled:line-through ${
+                        isChosen
+                          ? "border-navy-800 bg-navy-800 text-white"
+                          : "border-navy-100 text-navy-700 hover:border-navy-300"
+                      }`}
+                    >
+                      {option.name}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            {noSizeAvailable && selectedColor && (
-              <p className="text-xs text-red-500 mt-2">No sizes available in {selectedColor.color_name}. Try another color.</p>
-            )}
-          </div>
-        )}
+          );
+        })}
 
         <div className="mt-5 flex items-center gap-3">
           <p className="text-sm text-navy-700">Quantity</p>
@@ -214,7 +274,11 @@ export function ProductDetail({
               <HiOutlineMinus className="w-4 h-4" />
             </button>
             <span className="px-3 text-sm">{quantity}</span>
-            <button onClick={() => setQuantity((q) => q + 1)} className="px-3 py-1.5 text-navy-600" aria-label="Increase quantity">
+            <button
+              onClick={() => setQuantity((q) => q + 1)}
+              className="px-3 py-1.5 text-navy-600"
+              aria-label="Increase quantity"
+            >
               <HiOutlinePlus className="w-4 h-4" />
             </button>
           </div>
