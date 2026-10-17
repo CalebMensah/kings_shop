@@ -13,8 +13,8 @@ export async function GET(
     .select(`*,
       category:categories(name, slug),
       product_images(image_url, sort_order),
-      product_colors(id, color_name, image_url, sort_order, product_unavailable_combos(size_id)),
-      product_sizes(id, size_value, price, sort_order)`)
+      product_specs(id, name, sort_order, product_spec_options(id, name, image_url, sort_order)),
+      product_variants(id, price, is_available, product_variant_options(option_id))`)
     .eq("slug", slug)
     .eq("status", "active")
     .single();
