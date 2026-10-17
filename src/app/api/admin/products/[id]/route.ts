@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { productSchema } from "@/lib/validation/product";
-import { saveVariants } from "@/lib/product-variants";
+import { productSchema, firstIssueMessage } from "@/lib/validation/product";
 
 export async function GET(
   _request: NextRequest,
@@ -12,24 +11,16 @@ export async function GET(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { data: raw, error } = await supabase
+  const { data: product, error } = await supabase
     .from("products")
     .select(`*,
       product_images(id, image_url, sort_order),
-      product_colors(id, color_name, image_url, sort_order, product_unavailable_combos(size_id)),
-      product_sizes(id, size_value, price, sort_order)`)
+      product_specs(id, name, sort_order, product_spec_options(id, name, image_url, sort_order)),
+      product_variants(id, price, is_available, product_variant_options(option_id))`)
     .eq("id", id)
     .single();
 
-  if (error || !raw) return NextResponse.json({ error: error?.message ?? "Not found" }, { status: 404 });
-
-  const product = {
-    ...raw,
-    unavailable_combos: (raw.product_colors ?? []).flatMap((c: any) =>
-      (c.product_unavailable_combos ?? []).map((u: any) => ({ color_id: c.id, size_id: u.size_id }))
-    ),
-  };
-
+  if (error || !product) return NextResponse.json({ error: error?.message ?? "Not found" }, { status: 404 });
   return NextResponse.json({ product });
 }
 
@@ -43,13 +34,24 @@ export async function PATCH(
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json();
-  const parsed = productSchema.partial().safeParse(body);
+  const parsed = productSchema.safeParse(body);
   if (!parsed.success) {
     console.error("PRODUCT UPDATE — validation failed:", JSON.stringify(parsed.error.flatten()));
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return NextResponse.json({ error: firstIssueMessage(parsed.error) }, { status: 400 });
   }
 
-  const { colors, sizes, unavailable, ...productData } = parsed.data;
+  const { specs, variants, ...productData } = parsed.data;
+  const images: string[] = Array.isArray(body.images)
+    ? body.images.filter((u: unknown): u is string => typeof u === "string" && u.startsWith("https://"))
+    : [];
+
+  const hasOptionPhoto = specs.some((s) => s.options.some((o) => o.image_url));
+  if (images.length === 0 && !hasOptionPhoto) {
+    return NextResponse.json(
+      { error: "Add at least one product image, or a photo on one of the options" },
+      { status: 400 }
+    );
+  }
 
   const { data: product, error } = await supabase
     .from("products")
@@ -60,29 +62,23 @@ export async function PATCH(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  if (body.images) {
-    await supabase.from("product_images").delete().eq("product_id", id);
-    const imageRows = (body.images as string[]).map((url: string, i: number) => ({
-      product_id: id,
-      image_url: url,
-      sort_order: i,
-    }));
-    if (imageRows.length > 0) await supabase.from("product_images").insert(imageRows);
+  await supabase.from("product_images").delete().eq("product_id", id);
+  if (images.length > 0) {
+    await supabase.from("product_images").insert(
+      images.map((url, i) => ({ product_id: id, image_url: url, sort_order: i }))
+    );
   }
 
-  if (colors !== undefined) {
-    // Replace colors, sizes and combinations as one set (combinations are removed automatically with them)
-    const { error: delColors } = await supabase.from("product_colors").delete().eq("product_id", id);
-    const { error: delSizes } = await supabase.from("product_sizes").delete().eq("product_id", id);
-    if (delColors || delSizes) {
-      return NextResponse.json({ error: (delColors ?? delSizes)!.message }, { status: 500 });
-    }
+  // Replaces specs, options and combinations in one all-or-nothing step
+  const { error: variantError } = await supabase.rpc("save_product_variants", {
+    p_product_id: id,
+    p_specs: specs,
+    p_variants: variants,
+  });
 
-    const variantError = await saveVariants(supabase, id, colors, sizes ?? [], unavailable ?? []);
-    if (variantError) {
-      console.error("PRODUCT UPDATE — variants failed:", variantError);
-      return NextResponse.json({ error: variantError }, { status: 500 });
-    }
+  if (variantError) {
+    console.error("PRODUCT UPDATE — variants failed:", variantError.message);
+    return NextResponse.json({ error: variantError.message }, { status: 500 });
   }
 
   return NextResponse.json({ product });
