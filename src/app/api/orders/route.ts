@@ -11,7 +11,7 @@ const orderSchema = z.object({
   deliveryAddress: z.string().trim().max(300).optional(),
   paymentChannel: z.enum(["mobile_money", "bank_transfer"]),
   notes: z.string().trim().max(500).optional(),
-  agreedToPolicy: z.literal(true, { errorMap: () => ({ message: "You must agree to the terms" }) }),
+    agreedToPolicy: z.literal(true, { message: "You must agree to the terms" }),
   items: z
     .array(
       z.object({
