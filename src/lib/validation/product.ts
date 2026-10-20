@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const MAX_SPECS = 5;
 export const MAX_OPTIONS_PER_SPEC = 30;
-export const MAX_COMBINATIONS = 200;
+export const MAX_COMBINATIONS = 500;
 
 const optionSchema = z.object({
   client_id: z.string().min(1),
@@ -13,6 +13,7 @@ const optionSchema = z.object({
 const specSchema = z.object({
   client_id: z.string().min(1),
   name: z.string().trim().min(1, "Every specification needs a name").max(40, "Specification names can be up to 40 characters"),
+  affects_price: z.boolean().default(false),
   options: z
     .array(optionSchema)
     .min(1, "Every specification needs at least one option")
