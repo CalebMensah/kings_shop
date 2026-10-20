@@ -19,7 +19,7 @@ export default async function EditProductPage({
       .from("products")
       .select(`*,
         product_images(image_url, sort_order),
-        product_specs(id, name, sort_order, product_spec_options(id, name, image_url, sort_order)),
+        product_specs(id, name, sort_order, affects_price, product_spec_options(id, name, image_url, sort_order)),
         product_variants(id, price, is_available, product_variant_options(option_id))`)
       .eq("id", id)
       .single(),
