@@ -40,7 +40,7 @@ export default function AdminLoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-navy-900 px-4">
       <div className="w-full max-w-sm bg-white rounded-lg p-6 md:p-8">
         <h1 className="text-xl font-display font-semibold text-navy-900 mb-1">
-          Jay Imports Admin
+          Kings Shop and Imports Admin
         </h1>
         <p className="text-sm text-navy-500 mb-6">Sign in to manage your store</p>
 
