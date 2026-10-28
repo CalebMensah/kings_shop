@@ -5,6 +5,7 @@ import { ProductCard } from "@/components/storefront/ProductCard";
 import { CategoryRail } from "@/components/storefront/CategoryRail";
 import { createClient } from "@/lib/supabase/server";
 import { getMainCategories } from "@/lib/categories";
+import { getProductsPage, newSeed } from "@/lib/products";
 import { BUSINESS } from "@/lib/constants";
 import { getCurrentBatch } from "@/lib/batches";
 import { BatchBanner } from "@/components/storefront/BatchBanner";
@@ -13,14 +14,10 @@ export default async function HomePage() {
   const supabase = await createClient();
   const batch = await getCurrentBatch(supabase);
 
-  const [categories, { data: featuredProducts }] = await Promise.all([
+  // 8 random products on every visit, so older products stay in view
+  const [categories, { products: featuredProducts }] = await Promise.all([
     getMainCategories(supabase),
-    supabase
-      .from("products")
-      .select("slug, name, price, product_images(image_url, sort_order), product_specs(sort_order, product_spec_options(image_url, sort_order)), product_variants(price, is_available)")
-      .eq("status", "active")
-      .order("created_at", { ascending: false })
-      .limit(8),
+    getProductsPage(supabase, { page: 0, seed: newSeed(), limit: 8 }),
   ]);
 
   return (
@@ -75,12 +72,12 @@ export default async function HomePage() {
 
       <section className="max-w-6xl mx-auto px-4 md:px-6 py-12">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="font-display text-2xl text-navy-900">Latest arrivals</h2>
+          <h2 className="font-display text-2xl text-navy-900">Featured products</h2>
           <Link href="/shop" className="text-sm text-ocean hover:underline">View all</Link>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-          {featuredProducts?.map((product) => (
-            <ProductCard key={product.slug} product={product as any} />
+          {featuredProducts.map((product) => (
+            <ProductCard key={product.slug} product={product} />
           ))}
         </div>
       </section>
