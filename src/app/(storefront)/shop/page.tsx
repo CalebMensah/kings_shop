@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getMainCategories } from "@/lib/categories";
-import { getProductsPage } from "@/lib/products";
+import { getProductsPage, newSeed } from "@/lib/products";
 import { getCurrentBatch } from "@/lib/batches";
 import { BatchBanner } from "@/components/storefront/BatchBanner";
 import { SearchBar } from "@/components/storefront/SearchBar";
@@ -21,9 +21,12 @@ export default async function ShopPage({
   const supabase = await createClient();
   const batch = await getCurrentBatch(supabase);
 
+  // A fresh shuffle on every visit so older products don't sink. Searches stay newest-first.
+  const seed = search ? undefined : newSeed();
+
   const [mainCategories, { products, hasMore }] = await Promise.all([
     getMainCategories(supabase),
-    getProductsPage(supabase, { page: 0, search }),
+    getProductsPage(supabase, { page: 0, search, seed }),
   ]);
 
   return (
@@ -45,10 +48,11 @@ export default async function ShopPage({
       )}
 
       <ProductGrid
-        key={search ?? ""}
+        key={`${seed ?? "search"}-${search ?? ""}`}
         initialProducts={products}
         initialHasMore={hasMore}
         search={search}
+        seed={seed}
         emptyMessage={search ? `No products match "${search}".` : "No products yet."}
       />
     </div>
