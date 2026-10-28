@@ -2,6 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { HiOutlineArrowRight } from "react-icons/hi";
 import { ProductCard } from "@/components/storefront/ProductCard";
+import { RecentlyViewed } from "@/components/storefront/RecentlyViewed";
 import { CategoryRail } from "@/components/storefront/CategoryRail";
 import { createClient } from "@/lib/supabase/server";
 import { getMainCategories } from "@/lib/categories";
@@ -81,6 +82,8 @@ export default async function HomePage() {
           ))}
         </div>
       </section>
+
+      <RecentlyViewed excludeSlugs={featuredProducts.map((product) => product.slug)} />
     </div>
   );
 }
