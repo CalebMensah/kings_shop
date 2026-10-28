@@ -9,12 +9,14 @@ export function ProductGrid({
   initialHasMore,
   categorySlug,
   search,
+  seed,
   emptyMessage = "No products found.",
 }: {
   initialProducts: ProductListItem[];
   initialHasMore: boolean;
   categorySlug?: string;
   search?: string;
+  seed?: string;
   emptyMessage?: string;
 }) {
   const [products, setProducts] = useState<ProductListItem[]>(initialProducts);
@@ -35,6 +37,7 @@ export function ProductGrid({
       const params = new URLSearchParams({ page: String(page) });
       if (categorySlug) params.set("category", categorySlug);
       if (search) params.set("search", search);
+      if (seed) params.set("seed", seed);
 
       const res = await fetch(`/api/products?${params.toString()}`);
       if (!res.ok) throw new Error("Request failed");
@@ -52,7 +55,7 @@ export function ProductGrid({
       busy.current = false;
       setLoading(false);
     }
-  }, [page, hasMore, categorySlug, search]);
+  }, [page, hasMore, categorySlug, search, seed]);
 
   useEffect(() => {
     const el = sentinel.current;
