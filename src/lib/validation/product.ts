@@ -4,15 +4,27 @@ export const MAX_SPECS = 5;
 export const MAX_OPTIONS_PER_SPEC = 30;
 export const MAX_COMBINATIONS = 500;
 
+// Safety ceilings only. Real labels won't come close to these.
+export const MAX_SPEC_NAME_LENGTH = 150;
+export const MAX_OPTION_NAME_LENGTH = 500;
+
 const optionSchema = z.object({
   client_id: z.string().min(1),
-  name: z.string().trim().min(1, "Every option needs a name").max(60, "Option names can be up to 60 characters"),
+  name: z
+    .string()
+    .trim()
+    .min(1, "Every option needs a name")
+    .max(MAX_OPTION_NAME_LENGTH, `Option names can be up to ${MAX_OPTION_NAME_LENGTH} characters`),
   image_url: z.string().url("An option photo is invalid").nullable().default(null),
 });
 
 const specSchema = z.object({
   client_id: z.string().min(1),
-  name: z.string().trim().min(1, "Every specification needs a name").max(40, "Specification names can be up to 40 characters"),
+  name: z
+    .string()
+    .trim()
+    .min(1, "Every specification needs a name")
+    .max(MAX_SPEC_NAME_LENGTH, `Specification names can be up to ${MAX_SPEC_NAME_LENGTH} characters`),
   affects_price: z.boolean().default(false),
   options: z
     .array(optionSchema)
