@@ -6,6 +6,7 @@ export type SpecImageSource = {
 export type VariantPriceSource = {
   price: number | null;
   is_available: boolean;
+  stock_quantity?: number | null;
 };
 
 /** First option photo, used as a thumbnail when a product has no plain product images */
@@ -26,4 +27,16 @@ export function priceRange(basePrice: number, variants?: VariantPriceSource[] | 
   const min = Math.min(...prices);
   const max = Math.max(...prices);
   return { min, max, hasRange: min !== max };
+}
+
+/** True when the product tracks stock and at least one combination is in stock right now */
+export function hasStock(product: {
+  track_stock?: boolean | null;
+  stock_quantity?: number | null;
+  product_variants?: VariantPriceSource[] | null;
+}) {
+  if (!product.track_stock) return false;
+  const variants = product.product_variants ?? [];
+  if (variants.length > 0) return variants.some((v) => v.is_available && (v.stock_quantity ?? 0) > 0);
+  return (product.stock_quantity ?? 0) > 0;
 }
