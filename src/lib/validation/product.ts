@@ -8,6 +8,8 @@ export const MAX_COMBINATIONS = 500;
 export const MAX_SPEC_NAME_LENGTH = 150;
 export const MAX_OPTION_NAME_LENGTH = 500;
 
+const MAX_STOCK = 1_000_000;
+
 const optionSchema = z.object({
   client_id: z.string().min(1),
   name: z
@@ -37,6 +39,7 @@ const variantSchema = z.object({
   // null = use the product's base price
   price: z.number().positive("A combination price must be greater than 0").nullable().default(null),
   is_available: z.boolean().default(true),
+  stock_quantity: z.number().int("Stock must be a whole number").min(0, "Stock can't be negative").max(MAX_STOCK).default(0),
 });
 
 const productBaseSchema = z.object({
@@ -47,6 +50,8 @@ const productBaseSchema = z.object({
   moq: z.coerce.number().int().min(1, "MOQ must be at least 1").default(1),
   preorder_fulfillment_note: z.string().trim().max(200).optional(),
   status: z.enum(["active", "draft", "archived"]).default("active"),
+  track_stock: z.boolean().default(false),
+  stock_quantity: z.coerce.number().int("Stock must be a whole number").min(0, "Stock can't be negative").max(MAX_STOCK).default(0),
   specs: z.array(specSchema).max(MAX_SPECS, `A product can have up to ${MAX_SPECS} specifications`).default([]),
   variants: z.array(variantSchema).max(MAX_COMBINATIONS, `A product can have up to ${MAX_COMBINATIONS} combinations`).default([]),
 });
