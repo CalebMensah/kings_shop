@@ -28,6 +28,8 @@ type ExistingProduct = {
   moq: number;
   preorder_fulfillment_note: string | null;
   status: "active" | "draft" | "archived";
+  track_stock?: boolean | null;
+  stock_quantity?: number | null;
   product_images?: { image_url: string; sort_order: number }[];
   product_specs?: {
     id: string;
@@ -40,6 +42,7 @@ type ExistingProduct = {
     id: string;
     price: number | null;
     is_available: boolean;
+    stock_quantity?: number | null;
     product_variant_options: { option_id: string }[];
   }[];
 };
@@ -48,6 +51,7 @@ const PRESET_SPECS = ["Color", "Size", "Storage", "Condition"];
 const PRICE_BY_DEFAULT = ["size", "storage", "condition"];
 
 const bySort = (a: { sort_order: number }, b: { sort_order: number }) => a.sort_order - b.sort_order;
+const isWholeNumber = (value: string) => /^\d+$/.test(value.trim() || "0");
 
 function makeClientId() {
   return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
@@ -128,9 +132,10 @@ type Loaded = {
   groupPrices: Record<string, string>;
   overrides: Record<string, Override>;
   rules: Rule[];
+  stocks: Record<string, string>;
 };
 
-/** Turns a saved product into the simple editor state: price per option, rules, and any one-off changes */
+/** Turns a saved product into the simple editor state: price per option, rules, stock, and any one-off changes */
 function loadFromProduct(product?: ExistingProduct): Loaded {
   const rawSpecs = [...(product?.product_specs ?? [])].sort(bySort);
   let specs: SpecState[] = rawSpecs.map((s) => ({
@@ -144,20 +149,26 @@ function loadFromProduct(product?: ExistingProduct): Loaded {
     })),
   }));
 
-  if (!product || specs.length === 0) return { specs, groupPrices: {}, overrides: {}, rules: [] };
+  if (!product || specs.length === 0) return { specs, groupPrices: {}, overrides: {}, rules: [], stocks: {} };
 
   const base = Number(product.price);
   const specIndexOfOption = new Map<string, number>();
   specs.forEach((s, si) => s.options.forEach((o) => specIndexOfOption.set(o.client_id, si)));
 
-  const variants: { key: string; ids: string[]; price: number; available: boolean }[] = [];
+  const variants: { key: string; ids: string[]; price: number; available: boolean; stock: number }[] = [];
   for (const v of product.product_variants ?? []) {
     const ids = v.product_variant_options
       .map((o) => o.option_id)
       .filter((id) => specIndexOfOption.has(id))
       .sort((a, b) => (specIndexOfOption.get(a) ?? 0) - (specIndexOfOption.get(b) ?? 0));
     if (ids.length !== specs.length) continue;
-    variants.push({ key: ids.join("|"), ids, price: v.price ?? base, available: v.is_available });
+    variants.push({
+      key: ids.join("|"),
+      ids,
+      price: v.price ?? base,
+      available: v.is_available,
+      stock: Math.max(0, Number(v.stock_quantity ?? 0)),
+    });
   }
 
   // Older products have no saved flags: find the specifications that really change the price
@@ -229,7 +240,12 @@ function loadFromProduct(product?: ExistingProduct): Loaded {
   const comboKeys = new Set(combos.map((c) => c.key));
   const unavailable = new Set(variants.filter((v) => !v.available && comboKeys.has(v.key)).map((v) => v.key));
 
-  return { specs, groupPrices, overrides, rules: deriveRules(specs, combos, unavailable) };
+  const stocks: Record<string, string> = {};
+  for (const v of variants) {
+    if (comboKeys.has(v.key)) stocks[v.key] = String(v.stock);
+  }
+
+  return { specs, groupPrices, overrides, rules: deriveRules(specs, combos, unavailable), stocks };
 }
 
 export function ProductForm({
@@ -252,6 +268,9 @@ export function ProductForm({
   const [preorderNote, setPreorderNote] = useState(existingProduct?.preorder_fulfillment_note ?? "");
   const [status, setStatus] = useState(existingProduct?.status ?? "active");
 
+  const [trackStock, setTrackStock] = useState<boolean>(existingProduct?.track_stock === true);
+  const [stockQuantity, setStockQuantity] = useState(String(existingProduct?.stock_quantity ?? 0));
+
   const [imageUrls, setImageUrls] = useState<string[]>(
     [...(existingProduct?.product_images ?? [])].sort(bySort).map((img) => img.image_url)
   );
@@ -260,8 +279,11 @@ export function ProductForm({
   const [groupPrices, setGroupPrices] = useState<Record<string, string>>(initial.groupPrices);
   const [overrides, setOverrides] = useState<Record<string, Override>>(initial.overrides);
   const [rules, setRules] = useState<Rule[]>(initial.rules);
+  const [stocks, setStocks] = useState<Record<string, string>>(initial.stocks);
   const [filters, setFilters] = useState<Record<string, string>>({});
+  const [stockFilters, setStockFilters] = useState<Record<string, string>>({});
   const [bulkPrice, setBulkPrice] = useState("");
+  const [bulkStock, setBulkStock] = useState("");
 
   const [uploadingProductImages, setUploadingProductImages] = useState(false);
   const [uploadingOptionId, setUploadingOptionId] = useState<string | null>(null);
@@ -273,7 +295,7 @@ export function ProductForm({
   const { combos, total } = useMemo(() => buildCombos(specs), [specs]);
 
   const priceSpecs = useMemo(() => specs.filter((s) => s.affects_price && s.options.length > 0), [specs]);
-  const { combos: groups, total: groupTotal } = useMemo(() => buildCombos(priceSpecs), [priceSpecs]);
+  const { combos: groups } = useMemo(() => buildCombos(priceSpecs), [priceSpecs]);
 
   const rows = useMemo(() => {
     const priceSpecIds = new Set(priceSpecs.map((s) => s.client_id));
@@ -302,6 +324,15 @@ export function ProductForm({
   const visibleRows = rows.filter((r) =>
     specs.every((s) => {
       const f = activeFilter(s);
+      return !f || r.combo.optionIds.includes(f);
+    })
+  );
+
+  const activeStockFilter = (spec: SpecState) =>
+    spec.options.some((o) => o.client_id === stockFilters[spec.client_id]) ? stockFilters[spec.client_id] : "";
+  const stockRows = rows.filter((r) =>
+    specs.every((s) => {
+      const f = activeStockFilter(s);
       return !f || r.combo.optionIds.includes(f);
     })
   );
@@ -377,6 +408,11 @@ export function ProductForm({
       delete next[specId];
       return next;
     });
+    setStockFilters((prev) => {
+      const next = { ...prev };
+      delete next[specId];
+      return next;
+    });
   }
 
   function addOption(specId: string) {
@@ -440,6 +476,21 @@ export function ProductForm({
       next[g.key] = bulkPrice;
     });
     setGroupPrices(next);
+  }
+
+  // ---- Stock ----
+  function applyStockToShown() {
+    const value = bulkStock.trim();
+    if (!/^\d+$/.test(value)) {
+      showError("Enter a whole number, 0 or more, to apply");
+      return;
+    }
+    setError(null);
+    setStocks((prev) => {
+      const next = { ...prev };
+      for (const r of stockRows) next[r.combo.key] = value;
+      return next;
+    });
   }
 
   // ---- Rules ----
@@ -506,6 +557,12 @@ export function ProductForm({
     if (rows.some((r) => r.priceStr !== "" && !(Number(r.priceStr) > 0))) {
       return fail("Prices must be greater than 0");
     }
+    if (trackStock && specs.length === 0 && !isWholeNumber(stockQuantity)) {
+      return fail("Stock must be a whole number, 0 or more");
+    }
+    if (trackStock && specs.length > 0 && rows.some((r) => !isWholeNumber(stocks[r.combo.key] ?? ""))) {
+      return fail("Every stock number must be a whole number, 0 or more");
+    }
 
     const hasOptionPhoto = specs.some((s) => s.options.some((o) => o.image_url));
     if (imageUrls.length === 0 && !hasOptionPhoto) {
@@ -520,6 +577,8 @@ export function ProductForm({
       moq: Number(moq),
       preorder_fulfillment_note: preorderNote || undefined,
       status,
+      track_stock: trackStock,
+      stock_quantity: Number(stockQuantity.trim() || 0),
       images: imageUrls,
       specs: specs.map((s) => ({
         client_id: s.client_id,
@@ -535,6 +594,7 @@ export function ProductForm({
         option_client_ids: r.combo.optionIds,
         price: r.priceStr ? Number(r.priceStr) : null,
         is_available: r.available,
+        stock_quantity: Number((stocks[r.combo.key] ?? "").trim() || 0),
       })),
     };
 
@@ -662,18 +722,81 @@ export function ProductForm({
         </div>
       </div>
 
-      <div className="border border-turquoise/30 bg-turquoise/5 rounded p-4">
-        <p className="text-sm text-navy-700 font-medium mb-1">This product is a preorder item</p>
-        <p className="text-xs text-navy-400 mb-3">
-          Every product on this store is sourced per order — there&apos;s no separate in-stock option.
-        </p>
-        <label className="block text-sm text-navy-700 mb-1">Estimated delivery time</label>
-        <input
-          placeholder="e.g. Ships in 2–3 weeks"
-          value={preorderNote}
-          onChange={(e) => setPreorderNote(e.target.value)}
-          className="w-full border border-navy-100 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-turquoise"
-        />
+      {/* How the product is sold */}
+      <div className="border border-navy-100 rounded p-4">
+        <p className="text-sm font-medium text-navy-700 mb-3">How is this product sold?</p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <label
+            className={`flex items-start gap-2 border rounded p-3 cursor-pointer ${
+              !trackStock ? "border-navy-800 bg-navy-50" : "border-navy-100"
+            }`}
+          >
+            <input
+              type="radio"
+              name="sale-mode"
+              className="mt-0.5"
+              checked={!trackStock}
+              onChange={() => setTrackStock(false)}
+            />
+            <span className="text-sm text-navy-700">
+              <strong>Preorder only</strong>
+              <span className="block text-xs text-navy-400 mt-0.5">Sourced per order. No stock count.</span>
+            </span>
+          </label>
+
+          <label
+            className={`flex items-start gap-2 border rounded p-3 cursor-pointer ${
+              trackStock ? "border-navy-800 bg-navy-50" : "border-navy-100"
+            }`}
+          >
+            <input
+              type="radio"
+              name="sale-mode"
+              className="mt-0.5"
+              checked={trackStock}
+              onChange={() => setTrackStock(true)}
+            />
+            <span className="text-sm text-navy-700">
+              <strong>Available (track stock)</strong>
+              <span className="block text-xs text-navy-400 mt-0.5">
+                Sold from stock. When it hits 0 it automatically becomes a preorder.
+              </span>
+            </span>
+          </label>
+        </div>
+
+        {trackStock && specs.length === 0 && (
+          <div className="mt-3">
+            <label className="block text-sm text-navy-700 mb-1">Stock quantity</label>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={stockQuantity}
+              onChange={(e) => setStockQuantity(e.target.value)}
+              className="w-40 border border-navy-100 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-turquoise"
+            />
+            <p className="text-xs text-navy-400 mt-1">
+              This is the live count. Enter what you have right now, saving replaces the current number.
+            </p>
+          </div>
+        )}
+        {trackStock && specs.length > 0 && (
+          <p className="text-xs text-navy-400 mt-3">
+            Set the stock of each combination in the Stock section below the specifications.
+          </p>
+        )}
+
+        <div className="mt-4">
+          <label className="block text-sm text-navy-700 mb-1">Estimated delivery time (for preorders)</label>
+          <input
+            placeholder="e.g. Ships in 2–3 weeks"
+            value={preorderNote}
+            onChange={(e) => setPreorderNote(e.target.value)}
+            className="w-full border border-navy-100 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-turquoise"
+          />
+        </div>
       </div>
 
       {/* Product images */}
@@ -840,6 +963,88 @@ export function ProductForm({
           </div>
         )}
       </div>
+
+      {/* Stock per combination */}
+      {trackStock && specsWithOptions.length > 0 && total > 0 && total <= MAX_COMBINATIONS && (
+        <div className="border border-navy-100 rounded p-4">
+          <p className="text-sm font-medium text-navy-700">Stock</p>
+          <p className="text-xs text-navy-400 mt-1 mb-3">
+            How many of each combination you have ready. A combination at 0 automatically becomes a preorder.
+            These are live numbers. Saving replaces the current stock, and sales made while this page is open
+            will be overwritten, so enter what you have right now.
+          </p>
+
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            {specs
+              .filter((s) => s.options.length > 1)
+              .map((s) => (
+                <select
+                  key={s.client_id}
+                  value={activeStockFilter(s)}
+                  onChange={(e) => setStockFilters((prev) => ({ ...prev, [s.client_id]: e.target.value }))}
+                  className="border border-navy-100 rounded px-2 py-1.5 text-xs bg-white"
+                >
+                  <option value="">All {s.name.trim() || "options"}</option>
+                  {s.options.map((o) => (
+                    <option key={o.client_id} value={o.client_id}>
+                      {o.name.trim() || "—"}
+                    </option>
+                  ))}
+                </select>
+              ))}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <input
+              type="number"
+              min="0"
+              step="1"
+              placeholder="Stock"
+              value={bulkStock}
+              onChange={(e) => setBulkStock(e.target.value)}
+              className="w-24 border border-navy-100 rounded px-2 py-1.5 text-xs"
+            />
+            <button
+              type="button"
+              onClick={applyStockToShown}
+              className="text-xs bg-navy-800 text-white rounded px-3 py-1.5 hover:bg-navy-700"
+            >
+              Set stock for the {stockRows.length} shown
+            </button>
+          </div>
+
+          <div className="overflow-auto max-h-96 border border-navy-100 rounded">
+            <table className="w-full text-sm min-w-[300px]">
+              <thead className="bg-navy-50 text-navy-500 text-left sticky top-0">
+                <tr>
+                  <th className="px-3 py-2 font-medium">Combination</th>
+                  <th className="px-3 py-2 font-medium">Stock</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stockRows.map((r) => (
+                  <tr key={r.combo.key} className={`border-t border-navy-50 ${r.available ? "" : "opacity-50"}`}>
+                    <td className="px-3 py-2 text-navy-800">
+                      {r.combo.label}
+                      {!r.available && <span className="ml-2 text-[10px] text-navy-400">not offered</span>}
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={stocks[r.combo.key] ?? "0"}
+                        onChange={(e) => setStocks((prev) => ({ ...prev, [r.combo.key]: e.target.value }))}
+                        className="w-24 border border-navy-100 rounded px-2 py-1.5 text-sm"
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Prices, rules, and one-off changes */}
       {specs.length > 0 && specsWithOptions.length > 0 && (
