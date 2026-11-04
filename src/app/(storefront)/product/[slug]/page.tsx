@@ -15,7 +15,7 @@ const fetchProduct = cache(async (slug: string) => {
     .select(`*,
       product_images(image_url, sort_order),
       product_specs(id, name, sort_order, product_spec_options(id, name, image_url, sort_order)),
-      product_variants(id, price, is_available, product_variant_options(option_id))`)
+      product_variants(id, price, is_available, stock_quantity, product_variant_options(option_id))
     .eq("slug", slug)
     .eq("status", "active")
     .single();
