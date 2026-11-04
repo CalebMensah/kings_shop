@@ -6,7 +6,7 @@ const MAX_SLUGS = 12;
 const SLUG = /^[a-z0-9-]{1,200}$/;
 
 const PRODUCT_FIELDS =
-  "id, slug, name, price, product_images(image_url, sort_order), product_specs(sort_order, product_spec_options(image_url, sort_order)), product_variants(price, is_available)";
+  "id, slug, name, price, track_stock, stock_quantity, product_images(image_url, sort_order), product_specs(sort_order, product_spec_options(image_url, sort_order)), product_variants(price, is_available, stock_quantity)";
 
 export async function GET(request: NextRequest) {
   const raw = new URL(request.url).searchParams.get("slugs") ?? "";
