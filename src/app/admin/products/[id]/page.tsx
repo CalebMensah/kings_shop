@@ -5,6 +5,9 @@ import { ShareButton } from "@/components/storefront/ShareButton";
 import { createClient } from "@/lib/supabase/server";
 import { getLeafCategoryOptions } from "@/lib/categories";
 
+const PRODUCT_SELECT =
+  "*, product_images(image_url, sort_order), product_specs(id, name, sort_order, affects_price, product_spec_options(id, name, image_url, sort_order)), product_variants(id, price, is_available, stock_quantity, product_variant_options(option_id))";
+
 export default async function EditProductPage({
   params,
 }: {
@@ -15,19 +18,12 @@ export default async function EditProductPage({
 
   const [categories, { data: product }] = await Promise.all([
     getLeafCategoryOptions(supabase),
-    supabase
-      .from("products")
-      .select(`*,
-        product_images(image_url, sort_order),
-        product_specs(id, name, sort_order, affects_price, product_spec_options(id, name, image_url, sort_order)),
-        product_variants(id, price, is_available, product_variant_options(option_id))`)
-      .eq("id", id)
-      .single(),
+    supabase.from("products").select(PRODUCT_SELECT).eq("id", id).single(),
   ]);
 
   if (!product) notFound();
 
-  const productUrl = `${process.env.NEXT_PUBLIC_APP_URL}/product/${product.slug}`;
+  const productUrl = process.env.NEXT_PUBLIC_APP_URL + "/product/" + product.slug;
 
   return (
     <div>
