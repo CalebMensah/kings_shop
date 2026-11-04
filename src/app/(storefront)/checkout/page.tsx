@@ -51,6 +51,7 @@ export default function CheckoutPage() {
           items: items.map((i) => ({
           productId: i.productId,
           variantId: i.variantId,
+          expect: i.isPreorder ? "preorder" : "available",
           quantity: i.quantity,
         })),
       }),
@@ -182,12 +183,14 @@ export default function CheckoutPage() {
           className="w-full border border-navy-100 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-turquoise"
         />
 
+          
+        {items.some((i) => i.isPreorder) && (
           <div className="border border-amber-200 bg-amber-50 rounded p-3">
-          <p className="text-xs text-amber-800 leading-relaxed">
-            <strong>Shipping is not included in the price shown.</strong> {SHIPPING_INFO.disclaimer}
-          </p>
-        </div>
-
+            <p className="text-xs text-amber-800 leading-relaxed">
+              <strong>Shipping is not included in the price shown.</strong> {SHIPPING_INFO.disclaimer}
+            </p>
+          </div>
+        )}
         <label className="flex items-start gap-2 text-xs text-navy-500">
           <input
             type="checkbox"
