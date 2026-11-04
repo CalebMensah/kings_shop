@@ -14,5 +14,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ status: "error", message: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ status: "ok", timestamp: new Date().toISOString() });
-    }
+  // Cancel unpaid checkouts that are holding stock and give the stock back
+  const { data: released } = await supabase.rpc("release_stale_orders", { p_minutes: 60 });
+
+  return NextResponse.json({ status: "ok", released: released ?? 0, timestamp: new Date().toISOString() });
+}
