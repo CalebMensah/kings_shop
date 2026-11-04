@@ -5,6 +5,9 @@ import { verifyPaystackTransaction } from "@/lib/paystack";
 import { SHIPPING_INFO } from "@/lib/constants";
 import { OrderNumberSaveNotice } from "@/components/storefront/OrderNumberSaveNotice";
 
+const ORDER_FIELDS =
+  "order_number, total, payment_method, payment_status, fulfillment_type, contains_preorder";
+
 export default async function OrderConfirmationPage({
   params,
   searchParams,
@@ -13,13 +16,12 @@ export default async function OrderConfirmationPage({
   searchParams: Promise<{ reference?: string; trxref?: string }>;
 }) {
   const { orderNumber } = await params;
-  const { reference, trxref } = await searchParams;
-  const paystackRef = reference || trxref; // handle both
+  const { reference } = await searchParams;
   const supabase = createAdminClient();
 
   let { data: order, error } = await supabase
     .from("orders")
-    .select("order_number, total, payment_method, payment_status, fulfillment_type")
+    .select(ORDER_FIELDS)
     .eq("order_number", orderNumber)
     .single();
 
@@ -27,15 +29,10 @@ export default async function OrderConfirmationPage({
     notFound();
   }
 
-  if (paystackRef && order.payment_status !== "paid") {
+  if (reference && order.payment_status !== "paid") {
     try {
-      const verified = await verifyPaystackTransaction(paystackRef);
-      
-      // Verify amount matches - Paystack returns amount in kobo/pesewas
-      const paidAmount = verified.amount / 100; 
-      const isAmountValid = Math.abs(paidAmount - Number(order.total)) < 0.5;
-
-      if (verified.status === "success" && isAmountValid) {
+      const verified = await verifyPaystackTransaction(reference);
+      if (verified.status === "success") {
         await supabase
           .from("orders")
           .update({ payment_status: "paid", status: "confirmed" })
@@ -44,15 +41,22 @@ export default async function OrderConfirmationPage({
 
         const refreshed = await supabase
           .from("orders")
-          .select("order_number, total, payment_method, payment_status, fulfillment_type")
+          .select(ORDER_FIELDS)
           .eq("order_number", orderNumber)
           .single();
-        if (refreshed.data) order = refreshed.data;
+        order = refreshed.data ?? order;
       }
     } catch {
-      // verification failed — webhook may still resolve it
+      // verification failed, leave the status as it is. The webhook may still resolve it.
     }
   }
+
+  // Private setting: read on the server only, only for paid orders, and only when
+  // the order has preorder items (orders made only of in-stock items don't ship by sea)
+  const groupUrl =
+    order.payment_status === "paid" && order.contains_preorder
+      ? process.env.SHIPPING_GROUP_URL
+      : undefined;
 
   return (
     <div className="max-w-lg mx-auto px-4 py-16 md:py-20 text-center">
@@ -68,26 +72,27 @@ export default async function OrderConfirmationPage({
       {order.payment_status === "paid" ? (
         <>
           <p className="text-sm text-navy-600 bg-turquoise/10 rounded p-4 mb-4">
-            We've received your payment of GH₵{Number(order.total).toFixed(2)}. We'll start preparing your order.
+            We&apos;ve received your payment of GH₵{order.total}. We&apos;ll start preparing your order.
           </p>
-          <div className="border border-navy-100 rounded p-4 mb-6 text-left">
-            <p className="text-sm text-navy-700 font-medium mb-1">Shipping updates</p>
-            <p className="text-xs text-navy-500 mb-3 leading-relaxed">{SHIPPING_INFO.disclaimer}</p>
-            {SHIPPING_INFO.whatsappGroupUrl && (
+          {groupUrl && (
+            <div className="border border-navy-100 rounded p-4 mb-6 text-left">
+              <p className="text-sm text-navy-700 font-medium mb-1">Shipping updates</p>
+              <p className="text-xs text-navy-500 mb-3 leading-relaxed">{SHIPPING_INFO.disclaimer}</p>
               <a
-                href={SHIPPING_INFO.whatsappGroupUrl}
+                href={groupUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-block bg-navy-800 text-white text-sm px-4 py-2 rounded hover:bg-navy-700 transition"
               >
                 Join shipping updates group
               </a>
-            )}
-          </div>
+            </div>
+          )}
         </>
       ) : (
         <p className="text-sm text-navy-600 bg-amber-50 rounded p-4 mb-6">
-          We're still confirming your payment — this can take a minute. Refresh this page shortly, or contact us if it doesn't update.
+          We&apos;re still confirming your payment — this can take a minute. Refresh this page shortly, or
+          contact us if it doesn&apos;t update.
         </p>
       )}
 
