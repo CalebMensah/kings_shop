@@ -8,6 +8,9 @@ const schema = z.object({
   phone: z.string().trim().regex(/^0\d{9}$/, "Enter a valid phone number"),
 });
 
+const ORDER_FIELDS =
+  "order_number, status, payment_status, fulfillment_type, total, created_at, contains_preorder, customer:customers!inner(phone), order_items(product_name, variant_label, quantity, line_total)";
+
 export async function POST(request: NextRequest) {
   const ip = request.headers.get("x-forwarded-for") ?? "unknown";
   const { allowed } = checkRateLimit(`track:${ip}`);
@@ -23,13 +26,10 @@ export async function POST(request: NextRequest) {
 
   const supabase = createAdminClient();
 
-  // Require BOTH order number and matching phone — prevents anyone from browsing others' orders
-  // by guessing/incrementing order numbers
+  // Both the order number and the matching phone are required
   const { data: order } = await supabase
     .from("orders")
-    .select(
-      "order_number, status, payment_status, fulfillment_type, total, created_at, customer:customers!inner(phone), order_items(product_name, quantity, line_total)"
-    )
+    .select(ORDER_FIELDS)
     .eq("order_number", parsed.data.orderNumber.toUpperCase())
     .eq("customer.phone", parsed.data.phone)
     .single();
@@ -38,5 +38,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "No order found with that order number and phone number" }, { status: 404 });
   }
 
-  return NextResponse.json({ order });
+  // The group link is only sent for a paid order that has preorder items
+  const groupUrl =
+    order.payment_status === "paid" && order.contains_preorder
+      ? process.env.SHIPPING_GROUP_URL ?? null
+      : null;
+
+  return NextResponse.json({ order, groupUrl });
 }
