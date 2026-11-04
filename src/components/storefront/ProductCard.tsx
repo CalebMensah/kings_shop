@@ -1,12 +1,20 @@
 import Link from "next/link";
 import Image from "next/image";
-import { HiOutlineClock } from "react-icons/hi";
-import { firstSpecImage, priceRange, type SpecImageSource, type VariantPriceSource } from "@/lib/specs";
+import { HiOutlineCheckCircle, HiOutlineClock } from "react-icons/hi";
+import {
+  firstSpecImage,
+  hasStock,
+  priceRange,
+  type SpecImageSource,
+  type VariantPriceSource,
+} from "@/lib/specs";
 
 type Product = {
   slug: string;
   name: string;
   price: number;
+  track_stock?: boolean;
+  stock_quantity?: number;
   product_images: { image_url: string; sort_order: number }[];
   product_specs?: SpecImageSource[];
   product_variants?: VariantPriceSource[];
@@ -16,6 +24,7 @@ export function ProductCard({ product }: { product: Product }) {
   const productImage = [...(product.product_images ?? [])].sort((a, b) => a.sort_order - b.sort_order)[0];
   const displayImage = productImage?.image_url ?? firstSpecImage(product.product_specs);
   const { min, hasRange } = priceRange(product.price, product.product_variants);
+  const inStock = hasStock(product);
 
   return (
     <Link href={`/product/${product.slug}`} className="group block">
@@ -31,10 +40,17 @@ export function ProductCard({ product }: { product: Product }) {
         ) : (
           <div className="w-full h-full bg-navy-50" />
         )}
-        <span className="absolute top-2 left-2 bg-turquoise-dark text-white text-[11px] px-2 py-1 rounded flex items-center gap-1">
-          <HiOutlineClock className="w-3.5 h-3.5" />
-          Preorder
-        </span>
+        {inStock ? (
+          <span className="absolute top-2 left-2 bg-emerald-600 text-white text-[11px] px-2 py-1 rounded flex items-center gap-1">
+            <HiOutlineCheckCircle className="w-3.5 h-3.5" />
+            In stock
+          </span>
+        ) : (
+          <span className="absolute top-2 left-2 bg-turquoise-dark text-white text-[11px] px-2 py-1 rounded flex items-center gap-1">
+            <HiOutlineClock className="w-3.5 h-3.5" />
+            Preorder
+          </span>
+        )}
       </div>
       <div className="mt-2">
         <p className="text-sm text-navy-900 leading-snug">{product.name}</p>
