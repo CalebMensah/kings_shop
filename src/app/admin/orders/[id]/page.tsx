@@ -57,6 +57,15 @@ export default async function OrderDetailPage({
                       </td>
                       <td className="py-2 text-navy-700">
                         <p>{item.product_name}</p>
+                                                <span
+                          className={`inline-block text-[10px] rounded px-1.5 py-0.5 mt-1 ${
+                            item.fulfillment === "available"
+                              ? "bg-emerald-50 text-emerald-700"
+                              : "bg-navy-50 text-navy-500"
+                          }`}
+                        >
+                          {item.fulfillment === "available" ? "Available: hand over" : "Preorder: to source"}
+                        </span>
                             {(item.variant_label || item.color_name || item.size_value) && (
                           <p className="text-xs text-navy-400 mt-0.5">
                             {item.variant_label ?? [item.color_name, item.size_value].filter(Boolean).join(" / ")}
