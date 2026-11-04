@@ -4,13 +4,15 @@ import type { SpecImageSource, VariantPriceSource } from "@/lib/specs";
 export const PAGE_SIZE = 12;
 
 const PRODUCT_FIELDS =
-  "id, slug, name, price, product_images(image_url, sort_order), product_specs(sort_order, product_spec_options(image_url, sort_order)), product_variants(price, is_available)";
+  "id, slug, name, price, track_stock, stock_quantity, product_images(image_url, sort_order), product_specs(sort_order, product_spec_options(image_url, sort_order)), product_variants(price, is_available, stock_quantity)";
 
 export type ProductListItem = {
   id: string;
   slug: string;
   name: string;
   price: number;
+  track_stock: boolean;
+  stock_quantity: number;
   product_images: { image_url: string; sort_order: number }[];
   product_specs: SpecImageSource[];
   product_variants: VariantPriceSource[];
