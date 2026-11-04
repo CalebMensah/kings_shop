@@ -60,6 +60,7 @@ export async function POST(request: NextRequest) {
     p_items: data.items.map((i) => ({
       product_id: i.productId,
       variant_id: i.variantId ?? null,
+      expect: i.expect ?? null,
       quantity: i.quantity,
     })),
   });
