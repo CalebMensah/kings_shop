@@ -17,6 +17,7 @@ const orderSchema = z.object({
       z.object({
         productId: z.string().uuid(),
         variantId: z.string().uuid().optional(),
+        expect: z.enum(["available", "preorder"]).optional(),
         quantity: z.number().int().positive().max(50),
       })
     )
