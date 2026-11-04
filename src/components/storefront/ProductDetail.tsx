@@ -4,7 +4,14 @@ import { useMemo, useState } from "react";
 import Image from "next/image";
 import { useCart } from "@/lib/cart-context";
 import { SHIPPING_INFO } from "@/lib/constants";
-import { HiOutlineClock, HiOutlineCheck, HiOutlineShoppingBag, HiOutlineMinus, HiOutlinePlus } from "react-icons/hi";
+import {
+  HiOutlineCheck,
+  HiOutlineCheckCircle,
+  HiOutlineClock,
+  HiOutlineMinus,
+  HiOutlinePlus,
+  HiOutlineShoppingBag,
+} from "react-icons/hi";
 
 type ProductImage = { image_url: string; sort_order: number };
 type SpecOption = { id: string; name: string; image_url: string | null; sort_order: number };
@@ -13,6 +20,7 @@ type RawVariant = {
   id: string;
   price: number | null;
   is_available: boolean;
+  stock_quantity: number | null;
   product_variant_options: { option_id: string }[];
 };
 
@@ -27,6 +35,8 @@ export function ProductDetail({
     description: string | null;
     price: number;
     moq: number;
+    track_stock: boolean;
+    stock_quantity: number;
     preorder_fulfillment_note: string | null;
     product_images: ProductImage[];
     product_specs: Spec[];
@@ -52,6 +62,7 @@ export function ProductDetail({
         id: v.id,
         price: v.price ?? product.price,
         available: v.is_available,
+        stock: v.stock_quantity ?? 0,
         optionIds: new Set(v.product_variant_options.map((o) => o.option_id)),
       })),
     [product.product_variants, product.price]
@@ -111,6 +122,28 @@ export function ProductDetail({
   const effectivePrice = resolved ? resolved.price : minPrice;
   const showFrom = hasSpecs && !resolved && minPrice !== maxPrice;
 
+  // ---- Stock: in stock means available now, 0 means preorder ----
+  const tracked = product.track_stock;
+  const pool = hasSpecs ? compatible(selectedIds) : [];
+  const chosenStock: number | null = !hasSpecs ? product.stock_quantity : resolved ? resolved.stock : null;
+  const isAvailableNow = tracked && chosenStock !== null && chosenStock > 0;
+
+  let mode: "available" | "preorder" | "mixed" = "preorder";
+  if (tracked) {
+    if (chosenStock !== null) {
+      mode = chosenStock > 0 ? "available" : "preorder";
+    } else if (pool.length > 0) {
+      const inStockCount = pool.filter((v) => v.stock > 0).length;
+      mode = inStockCount === 0 ? "preorder" : inStockCount === pool.length ? "available" : "mixed";
+    }
+  }
+
+  const stockLimit = isAvailableNow ? (chosenStock as number) : null;
+  const minQty = stockLimit !== null ? Math.min(product.moq, stockLimit) : product.moq;
+  const qty =
+    stockLimit !== null ? Math.min(Math.max(quantity, minQty), stockLimit) : Math.max(quantity, minQty);
+  const stockText = stockLimit !== null ? (stockLimit <= 5 ? `Only ${stockLimit} left` : "In stock") : null;
+
   const noneAvailable = hasSpecs && availableVariants.length === 0;
   const firstUnselected = specs.find((s) => !selected[s.id]);
   const canAdd = !noneAvailable && (!hasSpecs || Boolean(resolved));
@@ -123,7 +156,9 @@ export function ProductDetail({
         ? `Select ${firstUnselected.name}`
         : hasSpecs && !resolved
           ? "Not available"
-          : "Preorder now";
+          : isAvailableNow
+            ? "Add to cart"
+            : "Preorder now";
 
   const selectedOptionImage =
     specs.map((s) => s.options.find((o) => o.id === selected[s.id])?.image_url).find(Boolean) ?? null;
@@ -149,9 +184,9 @@ export function ProductDetail({
       variantLabel: label || undefined,
       price: effectivePrice,
       image: displayedImage ?? null,
-      quantity,
-      isPreorder: true,
-      maxStock: 9999,
+      quantity: qty,
+      isPreorder: !isAvailableNow,
+      maxStock: isAvailableNow ? (chosenStock as number) : 9999,
     });
     setAdded(true);
     setTimeout(() => setAdded(false), 2000);
@@ -190,10 +225,22 @@ export function ProductDetail({
       </div>
 
       <div>
-        <span className="inline-flex items-center gap-1 bg-turquoise-dark text-white text-xs px-2 py-1 rounded mb-3">
-          <HiOutlineClock className="w-3.5 h-3.5" />
-          Preorder{product.preorder_fulfillment_note ? ` — ${product.preorder_fulfillment_note}` : ""}
-        </span>
+        {mode === "available" ? (
+          <span className="inline-flex items-center gap-1 bg-emerald-600 text-white text-xs px-2 py-1 rounded mb-3">
+            <HiOutlineCheckCircle className="w-3.5 h-3.5" />
+            Available now{stockText ? ` · ${stockText}` : ""}
+          </span>
+        ) : mode === "mixed" ? (
+          <span className="inline-flex items-center gap-1 bg-navy-100 text-navy-700 text-xs px-2 py-1 rounded mb-3">
+            <HiOutlineClock className="w-3.5 h-3.5" />
+            Availability depends on your choices
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 bg-turquoise-dark text-white text-xs px-2 py-1 rounded mb-3">
+            <HiOutlineClock className="w-3.5 h-3.5" />
+            Preorder{product.preorder_fulfillment_note ? ` — ${product.preorder_fulfillment_note}` : ""}
+          </span>
+        )}
 
         <h1 className="font-display text-2xl md:text-3xl text-navy-900">{product.name}</h1>
         <p className="text-lg md:text-xl text-navy-700 mt-2">
@@ -201,7 +248,9 @@ export function ProductDetail({
           GH₵{effectivePrice.toFixed(2)}
         </p>
 
-        <p className="text-xs text-navy-400 mt-2 leading-relaxed">{SHIPPING_INFO.shortNote}</p>
+        {mode !== "available" && (
+          <p className="text-xs text-navy-400 mt-2 leading-relaxed">{SHIPPING_INFO.shortNote}</p>
+        )}
 
         {product.moq > 1 && <p className="text-xs text-navy-400 mt-1">Minimum order: {product.moq}</p>}
 
@@ -248,7 +297,7 @@ export function ProductDetail({
                       onClick={() => handleSelect(spec, option)}
                       disabled={!selectable}
                       title={title}
-                      className={`text-sm px-3 py-1.5 rounded border transition disabled:opacity-40 disabled:cursor-not-allowed disabled:line-through ${
+                      className={`text-sm px-3 py-1.5 rounded border transition max-w-full text-left break-words disabled:opacity-40 disabled:cursor-not-allowed disabled:line-through ${
                         isChosen
                           ? "border-navy-800 bg-navy-800 text-white"
                           : "border-navy-100 text-navy-700 hover:border-navy-300"
@@ -267,16 +316,18 @@ export function ProductDetail({
           <p className="text-sm text-navy-700">Quantity</p>
           <div className="flex items-center border border-navy-100 rounded">
             <button
-              onClick={() => setQuantity((q) => Math.max(product.moq, q - 1))}
-              className="px-3 py-1.5 text-navy-600"
+              onClick={() => setQuantity(Math.max(minQty, qty - 1))}
+              disabled={qty <= minQty}
+              className="px-3 py-1.5 text-navy-600 disabled:opacity-30"
               aria-label="Decrease quantity"
             >
               <HiOutlineMinus className="w-4 h-4" />
             </button>
-            <span className="px-3 text-sm">{quantity}</span>
+            <span className="px-3 text-sm">{qty}</span>
             <button
-              onClick={() => setQuantity((q) => q + 1)}
-              className="px-3 py-1.5 text-navy-600"
+              onClick={() => setQuantity(stockLimit !== null ? Math.min(stockLimit, qty + 1) : qty + 1)}
+              disabled={stockLimit !== null && qty >= stockLimit}
+              className="px-3 py-1.5 text-navy-600 disabled:opacity-30"
               aria-label="Increase quantity"
             >
               <HiOutlinePlus className="w-4 h-4" />
@@ -301,7 +352,7 @@ export function ProductDetail({
           className="w-full flex items-center justify-center gap-2 bg-navy-800 text-white py-3 rounded text-sm font-medium disabled:opacity-40"
         >
           {added ? <HiOutlineCheck className="w-4 h-4" /> : <HiOutlineShoppingBag className="w-4 h-4" />}
-          {canAdd && !added ? `Preorder now · GH₵${(effectivePrice * quantity).toFixed(2)}` : buttonLabel}
+          {canAdd && !added ? `${buttonLabel} · GH₵${(effectivePrice * qty).toFixed(2)}` : buttonLabel}
         </button>
       </div>
     </div>
