@@ -77,6 +77,11 @@ export async function PATCH(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+    if (parsed.data.status === "cancelled") {
+    const { error: restockError } = await supabase.rpc("restock_order", { p_order_id: id });
+    if (restockError) console.error("RESTOCK ERROR:", restockError.message);
+    }
+
   // If payment just got manually confirmed, log the transaction + trigger notification
   if (parsed.data.payment_status === "paid" && currentOrder.payment_status !== "paid") {
     await supabase.from("payment_transactions").insert({
