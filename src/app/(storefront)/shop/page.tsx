@@ -1,22 +1,25 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getMainCategories } from "@/lib/categories";
-import { getProductsPage, newSeed } from "@/lib/products";
+import { cleanAvailability, getProductsPage, newSeed } from "@/lib/products";
 import { getCurrentBatch } from "@/lib/batches";
 import { BatchBanner } from "@/components/storefront/BatchBanner";
 import { SearchBar } from "@/components/storefront/SearchBar";
 import { CategoryRail } from "@/components/storefront/CategoryRail";
+import { AvailabilityFilter } from "@/components/storefront/AvailabilityFilter";
 import { ProductGrid } from "@/components/storefront/ProductGrid";
 
 export default async function ShopPage({
   searchParams,
 }: {
-  searchParams: Promise<{ category?: string; search?: string }>;
+  searchParams: Promise<{ category?: string; search?: string; availability?: string }>;
 }) {
-  const { category, search } = await searchParams;
+  const { category, search, availability: rawAvailability } = await searchParams;
 
   // Old links like /shop?category=shoes now live on their own page
   if (category) redirect(`/category/${encodeURIComponent(category)}`);
+
+  const availability = cleanAvailability(rawAvailability);
 
   const supabase = await createClient();
   const batch = await getCurrentBatch(supabase);
@@ -26,8 +29,13 @@ export default async function ShopPage({
 
   const [mainCategories, { products, hasMore }] = await Promise.all([
     getMainCategories(supabase),
-    getProductsPage(supabase, { page: 0, search, seed }),
+    getProductsPage(supabase, { page: 0, search, seed, availability }),
   ]);
+
+  let emptyMessage = "No products yet.";
+  if (search) emptyMessage = `No products match "${search}".`;
+  else if (availability === "available") emptyMessage = "Nothing is in stock right now. Try the Preorder filter.";
+  else if (availability === "preorder") emptyMessage = "No preorder products yet.";
 
   return (
     <div className="max-w-6xl mx-auto px-4 md:px-6 py-10">
@@ -39,8 +47,12 @@ export default async function ShopPage({
         <SearchBar initialValue={search ?? ""} />
       </div>
 
-      <div className="mb-8">
+      <div className="mb-6">
         <CategoryRail categories={mainCategories} showAll />
+      </div>
+
+      <div className="mb-6">
+        <AvailabilityFilter basePath="/shop" current={availability} params={{ search }} />
       </div>
 
       {search && (
@@ -48,12 +60,13 @@ export default async function ShopPage({
       )}
 
       <ProductGrid
-        key={`${seed ?? "search"}-${search ?? ""}`}
+        key={`${seed ?? "search"}-${search ?? ""}-${availability ?? "all"}`}
         initialProducts={products}
         initialHasMore={hasMore}
         search={search}
         seed={seed}
-        emptyMessage={search ? `No products match "${search}".` : "No products yet."}
+        availability={availability}
+        emptyMessage={emptyMessage}
       />
     </div>
   );
