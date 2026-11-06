@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ProductCard } from "@/components/storefront/ProductCard";
-import type { ProductListItem } from "@/lib/products";
+import type { Availability, ProductListItem } from "@/lib/products";
 
 export function ProductGrid({
   initialProducts,
@@ -10,6 +10,7 @@ export function ProductGrid({
   categorySlug,
   search,
   seed,
+  availability,
   emptyMessage = "No products found.",
 }: {
   initialProducts: ProductListItem[];
@@ -17,6 +18,7 @@ export function ProductGrid({
   categorySlug?: string;
   search?: string;
   seed?: string;
+  availability?: Availability;
   emptyMessage?: string;
 }) {
   const [products, setProducts] = useState<ProductListItem[]>(initialProducts);
@@ -38,6 +40,7 @@ export function ProductGrid({
       if (categorySlug) params.set("category", categorySlug);
       if (search) params.set("search", search);
       if (seed) params.set("seed", seed);
+      if (availability) params.set("availability", availability);
 
       const res = await fetch(`/api/products?${params.toString()}`);
       if (!res.ok) throw new Error("Request failed");
@@ -55,7 +58,7 @@ export function ProductGrid({
       busy.current = false;
       setLoading(false);
     }
-  }, [page, hasMore, categorySlug, search, seed]);
+  }, [page, hasMore, categorySlug, search, seed, availability]);
 
   useEffect(() => {
     const el = sentinel.current;
