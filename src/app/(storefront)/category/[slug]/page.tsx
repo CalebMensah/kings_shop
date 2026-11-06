@@ -1,12 +1,13 @@
 import { cache } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { HiOutlineChevronRight } from "react-icons/hi";
 import { createClient } from "@/lib/supabase/server";
 import { getCategoryContext } from "@/lib/categories";
-import { getProductsPage } from "@/lib/products";
+import { cleanAvailability, getProductsPage } from "@/lib/products";
+import { CategoryRail } from "@/components/storefront/CategoryRail";
+import { AvailabilityFilter } from "@/components/storefront/AvailabilityFilter";
 import { ProductGrid } from "@/components/storefront/ProductGrid";
 import { BUSINESS } from "@/lib/constants";
 
@@ -39,18 +40,31 @@ export async function generateMetadata({
 
 export default async function CategoryPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ availability?: string }>;
 }) {
   const { slug } = await params;
+  const { availability: rawAvailability } = await searchParams;
+  const availability = cleanAvailability(rawAvailability);
+
   const ctx = await loadContext(slug);
   if (!ctx) notFound();
 
   const { category, parent, siblings, children } = ctx;
   const supabase = await createClient();
-  const { products, hasMore } = await getProductsPage(supabase, { page: 0, categorySlug: slug });
+  const { products, hasMore } = await getProductsPage(supabase, {
+    page: 0,
+    categorySlug: slug,
+    availability,
+  });
 
   const hasChildren = children.length > 0;
+
+  let emptyMessage = `No products in ${category.name} yet.`;
+  if (availability === "available") emptyMessage = `Nothing in ${category.name} is in stock right now. Try the Preorder filter.`;
+  else if (availability === "preorder") emptyMessage = `No preorder products in ${category.name} yet.`;
 
   return (
     <div className="max-w-6xl mx-auto px-4 md:px-6 py-8 md:py-10">
@@ -69,32 +83,11 @@ export default async function CategoryPage({
 
       <h1 className="font-display text-2xl md:text-3xl text-navy-900 mb-6">{category.name}</h1>
 
-      {/* Main category: subcategory grid */}
+      {/* Main category: round subcategories, same style as the shop page */}
       {hasChildren && (
-        <section className="mb-10">
-          <h2 className="text-sm font-medium text-navy-700 mb-4">Browse {category.name}</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
-            {children.map((sub) => (
-              <Link key={sub.id} href={`/category/${sub.slug}`} className="group block">
-                <div className="relative aspect-square overflow-hidden rounded border border-navy-100 bg-navy-50">
-                  {sub.image_url ? (
-                    <Image
-                      src={sub.image_url}
-                      alt={sub.name}
-                      fill
-                      className="object-cover group-hover:scale-105 transition-transform duration-300"
-                      sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-                    />
-                  ) : (
-                    <div className="flex h-full items-center justify-center p-3 text-center text-sm text-navy-400">
-                      {sub.name}
-                    </div>
-                  )}
-                </div>
-                <p className="mt-2 text-sm text-navy-900 group-hover:text-turquoise-dark transition">{sub.name}</p>
-              </Link>
-            ))}
-          </div>
+        <section className="mb-8">
+          <h2 className="text-sm font-medium text-navy-700 mb-3">Browse {category.name}</h2>
+          <CategoryRail categories={children} />
         </section>
       )}
 
@@ -124,15 +117,20 @@ export default async function CategoryPage({
       )}
 
       {hasChildren && (
-        <h2 className="text-sm font-medium text-navy-700 mb-4">All {category.name}</h2>
+        <h2 className="text-sm font-medium text-navy-700 mb-3">All {category.name}</h2>
       )}
 
+      <div className="mb-6">
+        <AvailabilityFilter basePath={`/category/${slug}`} current={availability} />
+      </div>
+
       <ProductGrid
-        key={slug}
+        key={`${slug}-${availability ?? "all"}`}
         initialProducts={products}
         initialHasMore={hasMore}
         categorySlug={slug}
-        emptyMessage={`No products in ${category.name} yet.`}
+        availability={availability}
+        emptyMessage={emptyMessage}
       />
     </div>
   );
