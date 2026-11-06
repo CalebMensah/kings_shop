@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { cleanSeed, getProductsPage } from "@/lib/products";
+import { cleanAvailability, cleanSeed, getProductsPage } from "@/lib/products";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -8,9 +8,10 @@ export async function GET(request: NextRequest) {
   const category = searchParams.get("category") ?? undefined;
   const search = searchParams.get("search") ?? undefined;
   const seed = cleanSeed(searchParams.get("seed"));
+  const availability = cleanAvailability(searchParams.get("availability"));
 
   const supabase = await createClient();
-  const result = await getProductsPage(supabase, { page, categorySlug: category, search, seed });
+  const result = await getProductsPage(supabase, { page, categorySlug: category, search, seed, availability });
 
   return NextResponse.json(result);
 }
