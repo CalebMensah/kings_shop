@@ -7,7 +7,7 @@ export const BUSINESS = {
   phone: "0598785053",
   phones: ["0598785053", "0503168438"],
   whatsapp: "0598785053",
-  email: "email@yourdomain.com",
+  email: "kingsshopandimports@gmail.com",
   instagram: "",
   tiktok: "",
   location: "Master Sam, opposite Ankokeen Trading Enterprise, Cape Coast",
