@@ -1,6 +1,10 @@
 import Link from "next/link";
+import { FaWhatsapp } from "react-icons/fa";
 import { HiOutlinePhone, HiOutlineMail, HiOutlineLocationMarker } from "react-icons/hi";
 import { BUSINESS, SHIPPING_INFO } from "@/lib/constants";
+
+// General community group. Public on purpose, unlike the private shipping-updates group.
+const WHATSAPP_GROUP_URL = "https://chat.whatsapp.com/FgrVwqqlphWHemfTmFj64J?s=cl&p=a&iam=2";
 
 export function Footer() {
   const hasSocials = Boolean(BUSINESS.instagram || BUSINESS.tiktok);
@@ -33,6 +37,16 @@ export function Footer() {
           <p className="flex items-start gap-2 text-navy-300">
             <HiOutlineLocationMarker className="w-4 h-4 shrink-0 mt-0.5" /> {BUSINESS.location}
           </p>
+
+          <a
+            href={WHATSAPP_GROUP_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-4 inline-flex items-center gap-2 rounded bg-[#25D366] px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:brightness-95"
+          >
+            <FaWhatsapp className="h-5 w-5" />
+            Join our WhatsApp group
+          </a>
         </div>
 
         {hasSocials && (
