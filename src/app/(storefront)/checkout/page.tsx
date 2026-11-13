@@ -7,6 +7,7 @@ import { useCart } from "@/lib/cart-context";
 import { BUSINESS } from "@/lib/constants";
 import { SHIPPING_INFO } from "@/lib/constants";
 import { HiOutlineHome, HiOutlineTruck, HiOutlineDeviceMobile, HiOutlineOfficeBuilding } from "react-icons/hi";
+import { OrderSummary } from "@/components/storefront/OrderSummary";
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -216,19 +217,7 @@ export default function CheckoutPage() {
         </button>
       </form>
 
-      <div className="bg-white border border-navy-100 rounded p-5 h-fit order-1 md:order-2">
-        <h3 className="text-sm font-medium text-navy-700 mb-3">Order summary</h3>
-        {items.map((item) => (
-          <div key={`${item.productId}-${item.variantId ?? ""}`} className="flex justify-between text-sm mb-2">
-            <span className="text-navy-600">{item.name} × {item.quantity}</span>
-            <span className="text-navy-900">GH₵{(item.price * item.quantity).toFixed(2)}</span>
-          </div>
-        ))}
-        <div className="border-t border-navy-100 mt-3 pt-3 flex justify-between font-medium">
-          <span className="text-navy-700">Subtotal</span>
-          <span className="text-navy-900">GH₵{subtotal.toFixed(2)}</span>
-        </div>
-      </div>
+      <OrderSummary />
     </div>
   );
 }
