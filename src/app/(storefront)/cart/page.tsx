@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useCart, type CartItem } from "@/lib/cart-context";
@@ -42,6 +42,56 @@ function Stepper({ item, onChange }: { item: CartItem; onChange: (quantity: numb
         <HiOutlinePlus className="h-3.5 w-3.5" />
       </button>
     </div>
+  );
+}
+
+/**
+ * One chosen combination.
+ * Phones: a small card. The name is cut off after one line (tap it to read it in full),
+ * the price and quantity sit on the second line.
+ * Tablets and up: a single-row pill with the full name.
+ */
+function VariantPill({
+  line,
+  onQuantity,
+  onRemove,
+}: {
+  line: CartItem;
+  onQuantity: (quantity: number) => void;
+  onRemove: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const label = line.variantLabel ?? "";
+
+  return (
+    <li className="w-full min-w-0 rounded-2xl border border-navy-100 bg-white px-3 py-2 sm:inline-flex sm:w-auto sm:max-w-full sm:items-center sm:gap-2 sm:rounded-full sm:py-1 sm:pl-3 sm:pr-1.5">
+      <div className="flex items-center justify-between gap-2 sm:contents">
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          aria-expanded={open}
+          title={label}
+          className={`min-w-0 flex-1 text-left text-sm text-navy-800 sm:flex-initial sm:whitespace-normal sm:break-words ${
+            open ? "whitespace-normal break-words" : "truncate"
+          }`}
+        >
+          {label}
+        </button>
+        <button
+          type="button"
+          onClick={onRemove}
+          className="shrink-0 rounded-full p-1 text-navy-300 hover:text-red-500 sm:order-last"
+          aria-label={`Remove ${label}`}
+        >
+          <HiOutlineX className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      <div className="mt-1.5 flex items-center justify-between gap-2 sm:mt-0 sm:contents">
+        <span className="whitespace-nowrap text-xs text-navy-400">GH₵{line.price.toFixed(2)}</span>
+        <Stepper item={line} onChange={onQuantity} />
+      </div>
+    </li>
   );
 }
 
@@ -98,27 +148,12 @@ export default function CartPage() {
                   {variantLines.length > 0 && (
                     <ul className="mt-3 flex flex-wrap gap-2">
                       {variantLines.map((line) => (
-                        <li
+                        <VariantPill
                           key={`${line.productId}-${line.variantId ?? ""}`}
-                          className="inline-flex max-w-full items-center gap-2 rounded-full border border-navy-100 bg-white py-1 pl-3 pr-1.5"
-                        >
-                          <span className="min-w-0 break-words text-sm text-navy-800">{line.variantLabel}</span>
-                          <span className="whitespace-nowrap text-xs text-navy-400">
-                            GH₵{line.price.toFixed(2)}
-                          </span>
-                          <Stepper
-                            item={line}
-                            onChange={(quantity) => updateQuantity(line.productId, quantity, line.variantId)}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => removeItem(line.productId, line.variantId)}
-                            className="rounded-full p-1 text-navy-300 hover:text-red-500"
-                            aria-label={`Remove ${line.variantLabel}`}
-                          >
-                            <HiOutlineX className="h-3.5 w-3.5" />
-                          </button>
-                        </li>
+                          line={line}
+                          onQuantity={(quantity) => updateQuantity(line.productId, quantity, line.variantId)}
+                          onRemove={() => removeItem(line.productId, line.variantId)}
+                        />
                       ))}
                     </ul>
                   )}
