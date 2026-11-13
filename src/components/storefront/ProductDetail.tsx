@@ -17,28 +17,29 @@ import {
 } from "react-icons/hi";
 
 type ProductImage = { image_url: string; sort_order: number };
-type ProductColor = { id: string; color_name: string; image_url: string; sort_order: number };
-type ProductSize = {
+type SpecOption = { id: string; name: string; image_url: string | null; sort_order: number };
+type Spec = { id: string; name: string; sort_order: number; product_spec_options: SpecOption[] };
+type RawVariant = {
   id: string;
-  size_value: string;
-  sort_order: number;
-  price?: number | null; // newer products: the size's own price
-  price_adjustment?: number | null; // older products: an amount added to the base price
+  price: number | null;
+  is_available: boolean;
+  stock_quantity: number | null;
+  product_variant_options: { option_id: string }[];
 };
-type UnavailableCombo = { color_id: string; size_id: string };
 
 type Row = {
   key: string;
-  colorId?: string;
-  sizeId?: string;
+  variantId: string;
   label: string;
   price: number;
+  stock: number;
+  inStock: boolean;
+  min: number;
+  limit: number | null;
   image: string | null;
 };
 
 const bySort = (a: { sort_order: number }, b: { sort_order: number }) => a.sort_order - b.sort_order;
-const toggle = (list: string[], id: string) =>
-  list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
 
 export function ProductDetail({
   product,
@@ -50,44 +51,48 @@ export function ProductDetail({
     description: string | null;
     price: number;
     moq: number;
+    track_stock: boolean;
+    stock_quantity: number;
     preorder_fulfillment_note: string | null;
     product_images: ProductImage[];
-    product_colors: ProductColor[];
-    product_sizes: ProductSize[];
-    unavailable_combos?: UnavailableCombo[];
+    product_specs: Spec[];
+    product_variants: RawVariant[];
   };
-  productUrl?: string; // accepted so older pages that still pass it keep compiling
 }) {
   const { items, addItems } = useCart();
 
   const moq = Math.max(1, Number(product.moq) || 1);
-  const base = Number(product.price);
+  const tracked = Boolean(product.track_stock);
+  const basePrice = Number(product.price);
 
   const images = useMemo(() => [...product.product_images].sort(bySort), [product.product_images]);
-  const colors = useMemo(() => [...product.product_colors].sort(bySort), [product.product_colors]);
-  const sizes = useMemo(() => [...product.product_sizes].sort(bySort), [product.product_sizes]);
-  const hasColors = colors.length > 0;
-  const hasSizes = sizes.length > 0;
-  const hasChoices = hasColors || hasSizes;
 
-  const unavailable = useMemo(
-    () => new Set((product.unavailable_combos ?? []).map((u) => `${u.color_id}::${u.size_id}`)),
-    [product.unavailable_combos]
-  );
-
-  const sizePrices = useMemo(
+  const specs = useMemo(
     () =>
-      new Map(
-        sizes.map(
-          (s) =>
-            [s.id, s.price != null ? Number(s.price) : base + Number(s.price_adjustment ?? 0)] as const
-        )
-      ),
-    [sizes, base]
+      [...product.product_specs].sort(bySort).map((s) => ({
+        ...s,
+        options: [...s.product_spec_options].sort(bySort),
+      })),
+    [product.product_specs]
   );
 
-  const [selectedColors, setSelectedColors] = useState<string[]>([]);
-  const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
+  const variants = useMemo(
+    () =>
+      product.product_variants.map((v) => ({
+        id: v.id,
+        price: v.price != null ? Number(v.price) : basePrice,
+        available: v.is_available,
+        stock: Math.max(0, Number(v.stock_quantity ?? 0)),
+        optionIds: new Set(v.product_variant_options.map((o) => o.option_id)),
+      })),
+    [product.product_variants, basePrice]
+  );
+
+  const availableVariants = useMemo(() => variants.filter((v) => v.available), [variants]);
+  const hasSpecs = specs.length > 0;
+
+  // specId -> the option ids chosen in that specification. Nothing is preselected.
+  const [selected, setSelected] = useState<Record<string, string[]>>({});
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [plainQty, setPlainQty] = useState(moq);
   const [thumbIndex, setThumbIndex] = useState<number | null>(null);
@@ -103,107 +108,151 @@ export function ProductDetail({
     []
   );
 
-  // ---- Every chosen color and size makes one row (one combination, shown once) ----
-  const { rows, skipped } = useMemo(() => {
-    if (!hasChoices) return { rows: [] as Row[], skipped: 0 };
+  // ---- Variants that still work with what has been chosen so far ----
+  const compatibleVariants = useMemo(
+    () =>
+      availableVariants.filter((v) =>
+        specs.every((s) => {
+          const picks = selected[s.id] ?? [];
+          return picks.length === 0 || picks.some((id) => v.optionIds.has(id));
+        })
+      ),
+    [availableVariants, specs, selected]
+  );
 
-    const colorPicks: (ProductColor | null)[] = hasColors
-      ? colors.filter((c) => selectedColors.includes(c.id))
-      : [null];
-    const sizePicks: (ProductSize | null)[] = hasSizes
-      ? sizes.filter((s) => selectedSizes.includes(s.id))
-      : [null];
-    if (colorPicks.length === 0 || sizePicks.length === 0) return { rows: [] as Row[], skipped: 0 };
+  // An option can be chosen if some available combination has it together with the other choices
+  function isSelectable(specId: string, optionId: string) {
+    return availableVariants.some(
+      (v) =>
+        v.optionIds.has(optionId) &&
+        specs.every((s) => {
+          if (s.id === specId) return true;
+          const picks = selected[s.id] ?? [];
+          return picks.length === 0 || picks.some((id) => v.optionIds.has(id));
+        })
+    );
+  }
+
+  // ---- One row per chosen combination, shown once ----
+  const { rows, skipped } = useMemo(() => {
+    if (!hasSpecs) return { rows: [] as Row[], skipped: 0 };
+
+    const picks = specs.map((s) => s.options.filter((o) => (selected[s.id] ?? []).includes(o.id)));
+    if (picks.some((p) => p.length === 0)) return { rows: [] as Row[], skipped: 0 };
+
+    let combos: SpecOption[][] = [[]];
+    for (const group of picks) {
+      combos = combos.flatMap((c) => group.map((o) => [...c, o]));
+    }
 
     const result: Row[] = [];
-    let left = 0;
-    for (const color of colorPicks) {
-      for (const size of sizePicks) {
-        if (color && size && unavailable.has(`${color.id}::${size.id}`)) {
-          left += 1;
-          continue;
-        }
-        result.push({
-          key: `${color?.id ?? "none"}::${size?.id ?? "none"}`,
-          colorId: color?.id,
-          sizeId: size?.id,
-          label: [color?.color_name, size?.size_value].filter(Boolean).join(" / "),
-          price: size ? sizePrices.get(size.id) ?? base : base,
-          image: color?.image_url ?? null,
-        });
-      }
+    for (const combo of combos) {
+      const ids = combo.map((o) => o.id);
+      const variant = availableVariants.find(
+        (v) => v.optionIds.size === ids.length && ids.every((id) => v.optionIds.has(id))
+      );
+      if (!variant) continue;
+
+      const inStock = tracked && variant.stock > 0;
+      const limit = inStock ? variant.stock : null;
+      result.push({
+        key: variant.id,
+        variantId: variant.id,
+        label: combo.map((o) => o.name).join(" / "),
+        price: variant.price,
+        stock: variant.stock,
+        inStock,
+        min: limit !== null ? Math.min(moq, limit) : moq,
+        limit,
+        image: combo.find((o) => o.image_url)?.image_url ?? null,
+      });
     }
-    return { rows: result, skipped: left };
-  }, [hasChoices, hasColors, hasSizes, colors, sizes, selectedColors, selectedSizes, unavailable, sizePrices, base]);
+    return { rows: result, skipped: combos.length - result.length };
+  }, [hasSpecs, specs, selected, availableVariants, tracked, moq]);
 
   const qtyOf = (row: Row) => {
     const raw = quantities[row.key];
-    if (raw === undefined) return moq;
-    return raw <= 0 ? 0 : Math.max(raw, moq);
+    if (raw === undefined) return row.min;
+    if (raw <= 0) return 0;
+    return Math.min(Math.max(raw, row.min), row.limit ?? Number.POSITIVE_INFINITY);
   };
 
   const rowQty = rows.map((row) => ({ row, qty: qtyOf(row) }));
   const activeRows = rowQty.filter((x) => x.qty > 0);
 
-  const plainShown = Math.max(plainQty, moq);
-  const unitCount = hasChoices ? activeRows.reduce((n, x) => n + x.qty, 0) : plainShown;
-  const total = hasChoices ? activeRows.reduce((sum, x) => sum + x.row.price * x.qty, 0) : base * plainShown;
+  // ---- Products without specifications ----
+  const plainStock = Math.max(0, Number(product.stock_quantity ?? 0));
+  const plainInStock = !hasSpecs && tracked && plainStock > 0;
+  const plainLimit = plainInStock ? plainStock : null;
+  const plainMin = plainLimit !== null ? Math.min(moq, plainLimit) : moq;
+  const plainShown =
+    plainLimit !== null ? Math.min(Math.max(plainQty, plainMin), plainLimit) : Math.max(plainQty, plainMin);
 
-  // ---- Which options can still be chosen ----
-  const colorSelectable = (color: ProductColor) =>
-    !hasSizes ||
-    sizes.some(
-      (s) =>
-        (selectedSizes.length === 0 || selectedSizes.includes(s.id)) &&
-        !unavailable.has(`${color.id}::${s.id}`)
-    );
-  const sizeSelectable = (size: ProductSize) =>
-    !hasColors ||
-    colors.some(
-      (c) =>
-        (selectedColors.length === 0 || selectedColors.includes(c.id)) &&
-        !unavailable.has(`${c.id}::${size.id}`)
-    );
-
-  const noneAvailable =
-    hasColors && hasSizes && colors.every((c) => sizes.every((s) => unavailable.has(`${c.id}::${s.id}`)));
+  const unitCount = hasSpecs ? activeRows.reduce((n, x) => n + x.qty, 0) : plainShown;
+  const total = hasSpecs
+    ? activeRows.reduce((sum, x) => sum + x.row.price * x.qty, 0)
+    : basePrice * plainShown;
 
   // ---- Price shown under the title ----
-  const pricePool =
-    activeRows.length > 0
+  const pricePool = hasSpecs
+    ? activeRows.length > 0
       ? activeRows.map((x) => x.row.price)
-      : hasSizes
-        ? (selectedSizes.length > 0 ? sizes.filter((s) => selectedSizes.includes(s.id)) : sizes).map(
-            (s) => sizePrices.get(s.id) ?? base
-          )
-        : [base];
-  const minPrice = Math.min(...pricePool);
-  const maxPrice = Math.max(...pricePool);
-  const showFrom = hasSizes && activeRows.length === 0 && minPrice !== maxPrice;
+      : compatibleVariants.map((v) => v.price)
+    : [basePrice];
+  const minPrice = pricePool.length > 0 ? Math.min(...pricePool) : basePrice;
+  const maxPrice = pricePool.length > 0 ? Math.max(...pricePool) : basePrice;
+  const showFrom = hasSpecs && activeRows.length === 0 && minPrice !== maxPrice;
   const priceText =
     activeRows.length > 0 && minPrice !== maxPrice
       ? `GH₵${minPrice.toFixed(2)} – GH₵${maxPrice.toFixed(2)}`
       : `GH₵${minPrice.toFixed(2)}`;
 
+  // ---- Available now, preorder, or a mix ----
+  let mode: "available" | "preorder" | "mixed" = "preorder";
+  if (tracked) {
+    if (!hasSpecs) {
+      mode = plainInStock ? "available" : "preorder";
+    } else if (activeRows.length > 0) {
+      const inStockCount = activeRows.filter((x) => x.row.inStock).length;
+      mode = inStockCount === 0 ? "preorder" : inStockCount === activeRows.length ? "available" : "mixed";
+    } else if (compatibleVariants.length > 0) {
+      const inStockCount = compatibleVariants.filter((v) => v.stock > 0).length;
+      mode = inStockCount === 0 ? "preorder" : inStockCount === compatibleVariants.length ? "available" : "mixed";
+    }
+  }
+
+  const singleLimit = hasSpecs
+    ? activeRows.length === 1 && activeRows[0].row.inStock
+      ? activeRows[0].row.stock
+      : null
+    : plainLimit;
+  const stockText = singleLimit !== null ? (singleLimit <= 5 ? `Only ${singleLimit} left` : "In stock") : null;
+
   // ---- Image ----
-  const chosenColors = colors.filter((c) => selectedColors.includes(c.id));
-  const focusColor = chosenColors.find((c) => c.id === focusId) ?? chosenColors[0] ?? null;
+  const chosenOptions = specs.flatMap((s) => s.options.filter((o) => (selected[s.id] ?? []).includes(o.id)));
+  const focusOption =
+    chosenOptions.find((o) => o.id === focusId && o.image_url) ?? chosenOptions.find((o) => o.image_url) ?? null;
+  const defaultOptionImage = specs.flatMap((s) => s.options).find((o) => o.image_url)?.image_url ?? null;
   const displayedImage =
     thumbIndex !== null
       ? images[thumbIndex]?.image_url ?? null
-      : focusColor?.image_url ?? images[0]?.image_url ?? colors[0]?.image_url ?? null;
+      : focusOption?.image_url ?? images[0]?.image_url ?? defaultOptionImage;
 
   // ---- Button ----
+  const noneAvailable = hasSpecs && availableVariants.length === 0;
+  const firstUnselected = specs.find((s) => (selected[s.id] ?? []).length === 0);
+
   let blockedLabel: string | null = null;
   if (noneAvailable) blockedLabel = "Not available";
-  else if (hasChoices && activeRows.length === 0) {
-    if (hasColors && selectedColors.length === 0) blockedLabel = "Select Color";
-    else if (hasSizes && selectedSizes.length === 0) blockedLabel = "Select Size";
+  else if (hasSpecs && activeRows.length === 0) {
+    if (firstUnselected) blockedLabel = `Select ${firstUnselected.name}`;
     else if (rows.length === 0) blockedLabel = "Not available";
     else blockedLabel = "Choose a quantity";
   }
   const canAdd = blockedLabel === null;
-  const buttonLabel = added ? "Added to cart" : blockedLabel ?? "Preorder now";
+
+  const sellsFromStock = hasSpecs ? activeRows.some((x) => x.row.inStock) : plainInStock;
+  const buttonLabel = added ? "Added to cart" : blockedLabel ?? (sellsFromStock ? "Add to cart" : "Preorder now");
 
   const cartQtyFor = (variantId?: string) =>
     items.find((i) => i.productId === product.id && (i.variantId ?? "") === (variantId ?? ""))?.quantity ?? 0;
@@ -213,35 +262,44 @@ export function ProductDetail({
     label: row.label,
     price: row.price,
     image: row.image,
-    inCart: cartQtyFor(row.key),
+    note: tracked ? (row.inStock ? (row.stock <= 5 ? `Only ${row.stock} left` : "In stock") : "Preorder") : undefined,
+    inCart: cartQtyFor(row.variantId),
     qty,
-    atMax: false,
+    atMax: row.limit !== null && qty >= row.limit,
   }));
 
   // ---- Actions ----
-  function toggleColor(color: ProductColor) {
-    setSelectedColors((prev) => toggle(prev, color.id));
-    setFocusId(color.id);
-    setThumbIndex(null);
-    setAddedCount(0);
-  }
-
-  function toggleSize(size: ProductSize) {
-    setSelectedSizes((prev) => toggle(prev, size.id));
+  function toggleOption(specId: string, option: SpecOption) {
+    setSelected((prev) => {
+      const current = prev[specId] ?? [];
+      return {
+        ...prev,
+        [specId]: current.includes(option.id) ? current.filter((id) => id !== option.id) : [...current, option.id],
+      };
+    });
+    setFocusId(option.id);
+    if (option.image_url) setThumbIndex(null);
     setAddedCount(0);
   }
 
   function stepRow(key: string, delta: 1 | -1) {
     const entry = rowQty.find((x) => x.row.key === key);
     if (!entry) return;
-    const current = entry.qty;
-    const next = delta === 1 ? (current === 0 ? moq : current + 1) : current <= moq ? 0 : current - 1;
+    const { row, qty } = entry;
+
+    let next: number;
+    if (delta === 1) {
+      next = qty === 0 ? row.min : row.limit !== null ? Math.min(row.limit, qty + 1) : qty + 1;
+    } else {
+      next = qty <= row.min ? 0 : qty - 1;
+    }
     setQuantities((prev) => ({ ...prev, [key]: next }));
     setAddedCount(0);
   }
 
   function stepPlain(delta: 1 | -1) {
-    setPlainQty(Math.max(moq, plainShown + delta));
+    const next = Math.max(plainMin, plainShown + delta);
+    setPlainQty(plainLimit !== null ? Math.min(plainLimit, next) : next);
     setAddedCount(0);
   }
 
@@ -255,22 +313,20 @@ export function ProductDetail({
   function handleAddToCart() {
     if (!canAdd) return;
 
-    if (hasChoices) {
+    if (hasSpecs) {
       addItems(
         activeRows.map(({ row, qty }) => ({
           productId: product.id,
           slug: product.slug,
-          variantId: row.key,
-          colorId: row.colorId,
-          sizeId: row.sizeId,
+          variantId: row.variantId,
           name: product.name,
           variantLabel: row.label,
           price: row.price,
-          image: row.image ?? displayedImage,
+          image: row.image ?? images[0]?.image_url ?? defaultOptionImage,
           quantity: qty,
           moq,
-          isPreorder: true,
-          maxStock: 9999,
+          isPreorder: !row.inStock,
+          maxStock: row.inStock ? row.stock : 9999,
         }))
       );
       setQuantities({}); // every row goes back to the minimum
@@ -281,15 +337,15 @@ export function ProductDetail({
           productId: product.id,
           slug: product.slug,
           name: product.name,
-          price: base,
+          price: basePrice,
           image: displayedImage,
           quantity: plainShown,
           moq,
-          isPreorder: true,
-          maxStock: 9999,
+          isPreorder: !plainInStock,
+          maxStock: plainInStock ? plainStock : 9999,
         },
       ]);
-      setPlainQty(moq);
+      setPlainQty(plainMin);
       flashAdded(plainShown);
     }
   }
@@ -311,7 +367,7 @@ export function ProductDetail({
             />
           )}
         </div>
-        {!hasColors && images.length > 1 && (
+        {images.length > 1 && (
           <div className="flex gap-2 overflow-x-auto">
             {images.map((img, i) => (
               <button
@@ -329,10 +385,24 @@ export function ProductDetail({
       </div>
 
       <div>
-        <span className="inline-flex items-center gap-1 bg-turquoise-dark text-white text-xs px-2 py-1 rounded mb-3">
-          <HiOutlineClock className="w-3.5 h-3.5" />
-          Preorder{product.preorder_fulfillment_note ? ` — ${product.preorder_fulfillment_note}` : ""}
-        </span>
+        {mode === "available" ? (
+          <span className="inline-flex items-center gap-1 bg-emerald-600 text-white text-xs px-2 py-1 rounded mb-3">
+            <HiOutlineCheckCircle className="w-3.5 h-3.5" />
+            Available now{stockText ? ` · ${stockText}` : ""}
+          </span>
+        ) : mode === "mixed" ? (
+          <span className="inline-flex items-center gap-1 bg-navy-100 text-navy-700 text-xs px-2 py-1 rounded mb-3">
+            <HiOutlineClock className="w-3.5 h-3.5" />
+            {activeRows.length > 0
+              ? "Some items are in stock, some are preorders"
+              : "Availability depends on your choices"}
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 bg-turquoise-dark text-white text-xs px-2 py-1 rounded mb-3">
+            <HiOutlineClock className="w-3.5 h-3.5" />
+            Preorder{product.preorder_fulfillment_note ? ` — ${product.preorder_fulfillment_note}` : ""}
+          </span>
+        )}
 
         <h1 className="font-display text-2xl md:text-3xl text-navy-900">{product.name}</h1>
         <p className="text-lg md:text-xl text-navy-700 mt-2">
@@ -340,7 +410,9 @@ export function ProductDetail({
           {priceText}
         </p>
 
-        <p className="text-xs text-navy-400 mt-2 leading-relaxed">{SHIPPING_INFO.shortNote}</p>
+        {mode !== "available" && (
+          <p className="text-xs text-navy-400 mt-2 leading-relaxed">{SHIPPING_INFO.shortNote}</p>
+        )}
 
         {moq > 1 && <p className="text-xs text-navy-400 mt-1">Minimum order: {moq}</p>}
 
@@ -350,77 +422,49 @@ export function ProductDetail({
           </p>
         )}
 
-        {hasChoices && (
+        {hasSpecs && (
           <div id="options" className="scroll-mt-24">
-            {(colors.length > 1 || sizes.length > 1) && (
+            {specs.some((s) => s.options.length > 1) && (
               <p className="mt-5 text-xs text-navy-400">Tap more than one option to order several at once.</p>
             )}
 
-            {hasColors && (
-              <div className="mt-4">
-                <p className="text-sm text-navy-700 mb-2">
-                  Color
-                  {chosenColors.length === 0 ? (
-                    <span className="text-red-500"> · required</span>
-                  ) : chosenColors.length <= 2 ? (
-                    `: ${chosenColors.map((c) => c.color_name).join(", ")}`
-                  ) : (
-                    ` · ${chosenColors.length} selected`
-                  )}
-                </p>
-                <div className="flex gap-2 flex-wrap">
-                  {colors.map((color) => {
-                    const chosen = selectedColors.includes(color.id);
-                    const selectable = colorSelectable(color);
-                    return (
-                      <OptionButton
-                        key={color.id}
-                        name={color.color_name}
-                        imageUrl={color.image_url}
-                        chosen={chosen}
-                        disabled={!selectable && !chosen}
-                        title={selectable || chosen ? color.color_name : "Not available in your chosen sizes"}
-                        onClick={() => toggleColor(color)}
-                      />
-                    );
-                  })}
+            {specs.map((spec) => {
+              const picked = selected[spec.id] ?? [];
+              const pickedNames = spec.options.filter((o) => picked.includes(o.id)).map((o) => o.name);
+              return (
+                <div key={spec.id} className="mt-4">
+                  <p className="text-sm text-navy-700 mb-2">
+                    {spec.name}
+                    {pickedNames.length === 0 ? (
+                      <span className="text-red-500"> · required</span>
+                    ) : pickedNames.length <= 2 ? (
+                      `: ${pickedNames.join(", ")}`
+                    ) : (
+                      ` · ${pickedNames.length} selected`
+                    )}
+                  </p>
+                  <div className="flex gap-2 flex-wrap">
+                    {spec.options.map((option) => {
+                      const chosen = picked.includes(option.id);
+                      const selectable = isSelectable(spec.id, option.id);
+                      return (
+                        <OptionButton
+                          key={option.id}
+                          name={option.name}
+                          imageUrl={option.image_url}
+                          chosen={chosen}
+                          disabled={!selectable && !chosen}
+                          title={selectable || chosen ? option.name : "Not available with your other choices"}
+                          onClick={() => toggleOption(spec.id, option)}
+                        />
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })}
 
-            {hasSizes && (
-              <div className="mt-4">
-                <p className="text-sm text-navy-700 mb-2">
-                  Size
-                  {selectedSizes.length === 0 ? (
-                    <span className="text-red-500"> · required</span>
-                  ) : selectedSizes.length <= 2 ? (
-                    `: ${sizes
-                      .filter((s) => selectedSizes.includes(s.id))
-                      .map((s) => s.size_value)
-                      .join(", ")}`
-                  ) : (
-                    ` · ${selectedSizes.length} selected`
-                  )}
-                </p>
-                <div className="flex gap-2 flex-wrap">
-                  {sizes.map((size) => {
-                    const chosen = selectedSizes.includes(size.id);
-                    const selectable = sizeSelectable(size);
-                    return (
-                      <OptionButton
-                        key={size.id}
-                        name={size.size_value}
-                        chosen={chosen}
-                        disabled={!selectable && !chosen}
-                        title={selectable || chosen ? size.size_value : "Not available in your chosen colors"}
-                        onClick={() => toggleSize(size)}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+            {noneAvailable && <p className="mt-3 text-xs text-red-500">Nothing is available right now.</p>}
 
             {skipped > 0 && (
               <p className="mt-3 text-xs text-amber-700">
@@ -441,13 +485,13 @@ export function ProductDetail({
           </div>
         )}
 
-        {!hasChoices && (
+        {!hasSpecs && (
           <div className="mt-5 flex items-center gap-3">
             <p className="text-sm text-navy-700">Quantity</p>
             <div className="flex items-center border border-navy-100 rounded">
               <button
                 onClick={() => stepPlain(-1)}
-                disabled={plainShown <= moq}
+                disabled={plainShown <= plainMin}
                 className="px-3 py-1.5 text-navy-600 disabled:opacity-30"
                 aria-label="Decrease quantity"
               >
@@ -456,7 +500,8 @@ export function ProductDetail({
               <span className="px-3 text-sm">{plainShown}</span>
               <button
                 onClick={() => stepPlain(1)}
-                className="px-3 py-1.5 text-navy-600"
+                disabled={plainLimit !== null && plainShown >= plainLimit}
+                className="px-3 py-1.5 text-navy-600 disabled:opacity-30"
                 aria-label="Increase quantity"
               >
                 <HiOutlinePlus className="w-4 h-4" />
