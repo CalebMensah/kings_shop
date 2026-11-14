@@ -3,12 +3,13 @@
 import { useState } from "react";
 import { HiOutlineShare, HiOutlineCheck, HiOutlineLink } from "react-icons/hi";
 import { FaWhatsapp } from "react-icons/fa";
+import { BUSINESS } from "@/lib/constants";
 
 export function ShareButton({ productName, productUrl }: { productName: string; productUrl: string }) {
   const [copied, setCopied] = useState(false);
   const [showFallback, setShowFallback] = useState(false);
 
-  const shareText = `Check out ${productName} on Jay Imports`;
+  const shareText = `Check out ${productName} on ${BUSINESS.name}`;
 
   async function handleShare() {
     if (typeof navigator !== "undefined" && navigator.share) {
