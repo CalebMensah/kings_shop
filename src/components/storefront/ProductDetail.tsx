@@ -5,6 +5,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { useCart } from "@/lib/cart-context";
 import { SHIPPING_INFO, ESTIMATED_ARRIVAL } from "@/lib/constants";
+import { whatsappUrl } from "@/lib/whatsapp";
+import { FaWhatsapp } from "react-icons/fa";
 import { OptionButton } from "@/components/storefront/OptionButton";
 import { SelectionList, type SelectionRow } from "@/components/storefront/SelectionList";
 import {
@@ -172,7 +174,9 @@ export function ProductDetail({
 
   const qtyOf = (row: Row) => {
     const raw = quantities[row.key];
-    if (raw === undefined) return row.min;
+    // A lone combination is ready to add. When several combinations are showing, new ones start at 0
+    // so choosing another colour never silently adds it in a size the customer didn't pick.
+    if (raw === undefined) return rows.length === 1 ? row.min : 0;
     if (raw <= 0) return 0;
     return Math.min(Math.max(raw, row.min), row.limit ?? Number.POSITIVE_INFINITY);
   };
@@ -270,6 +274,14 @@ export function ProductDetail({
 
   // ---- Actions ----
   function toggleOption(specId: string, option: SpecOption) {
+    // Lock in what the customer currently sees, so combinations already showing keep their quantity
+    setQuantities((prev) => {
+      const next = { ...prev };
+      for (const { row, qty } of rowQty) {
+        if (next[row.key] === undefined) next[row.key] = qty;
+      }
+      return next;
+    });
     setSelected((prev) => {
       const current = prev[specId] ?? [];
       return {
@@ -329,7 +341,7 @@ export function ProductDetail({
           maxStock: row.inStock ? row.stock : 9999,
         }))
       );
-      setQuantities({}); // every row goes back to the minimum
+      setQuantities({}); // start fresh after adding
       flashAdded(unitCount);
     } else {
       addItems([
@@ -354,7 +366,7 @@ export function ProductDetail({
 
   return (
     <div className="max-w-6xl mx-auto px-4 md:px-6 py-6 md:py-10 grid md:grid-cols-2 gap-6 md:gap-10 pb-28 md:pb-10">
-      <div>
+      <div className="md:sticky md:top-24 md:self-start min-w-0">
         <div className="relative aspect-square bg-white border border-navy-100 mb-3">
           {displayedImage && (
             <Image
@@ -384,7 +396,7 @@ export function ProductDetail({
         )}
       </div>
 
-      <div>
+      <div className="min-w-0">
         {mode === "available" ? (
           <span className="inline-flex items-center gap-1 bg-emerald-600 text-white text-xs px-2 py-1 rounded mb-3">
             <HiOutlineCheckCircle className="w-3.5 h-3.5" />
@@ -478,7 +490,9 @@ export function ProductDetail({
                 <p className="text-sm text-navy-700 mb-2">Your selection</p>
                 <SelectionList rows={listRows} onStep={stepRow} />
                 {listRows.length > 1 && (
-                  <p className="mt-2 text-xs text-navy-400">Lower a quantity to 0 to leave a combination out.</p>
+                  <p className="mt-2 text-xs text-navy-400">
+                    Use + on the exact combinations you want. Anything left at 0 is not added to your cart.
+                  </p>
                 )}
               </div>
             )}
@@ -517,6 +531,15 @@ export function ProductDetail({
           </p>
         )}
 
+        {mode !== "available" && (
+          <p className="mt-3 flex items-start gap-1.5 text-xs text-navy-500 leading-relaxed">
+            <HiOutlineClock className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            {mode === "mixed"
+              ? `Preorder items arrive in ${product.preorder_fulfillment_note || ESTIMATED_ARRIVAL}. In-stock items are ready sooner.`
+              : `Preorder: estimated arrival ${product.preorder_fulfillment_note || ESTIMATED_ARRIVAL}.`}
+          </p>
+        )}
+
         <button
           onClick={handleAddToCart}
           disabled={!canAdd}
@@ -533,6 +556,16 @@ export function ProductDetail({
             <Link href="/cart" className="underline">View cart</Link>
           </p>
         )}
+
+        <a
+          href={whatsappUrl(`Hello Kings Shop & Importation, I have a question about "${product.name}".`)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-5 inline-flex items-center gap-2 text-sm text-navy-600 hover:text-navy-900"
+        >
+          <FaWhatsapp className="w-4 h-4 text-[#25D366]" />
+          Questions about this product? Ask us on WhatsApp
+        </a>
       </div>
 
       <div className="md:hidden fixed bottom-0 inset-x-0 bg-white border-t border-navy-100 p-4 z-40">
