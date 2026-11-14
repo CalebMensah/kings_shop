@@ -1,89 +1,81 @@
-import Link from "next/link";
-import Image from "next/image";
-import { HiOutlineArrowRight } from "react-icons/hi";
 import { ProductCard } from "@/components/storefront/ProductCard";
 import { RecentlyViewed } from "@/components/storefront/RecentlyViewed";
 import { CategoryRail } from "@/components/storefront/CategoryRail";
 import { createClient } from "@/lib/supabase/server";
 import { getMainCategories } from "@/lib/categories";
 import { getProductsPage, newSeed } from "@/lib/products";
-import { BUSINESS } from "@/lib/constants";
+import { ESTIMATED_ARRIVAL } from "@/lib/constants";
 import { getCurrentBatch } from "@/lib/batches";
 import { BatchBanner } from "@/components/storefront/BatchBanner";
+import {
+  Hero,
+  ProductSection,
+  ImportEnquirySection,
+  HowItWorks,
+  WhyKings,
+  ReviewGallery,
+  ContactBlock,
+} from "@/components/storefront/HomeSections";
 
 export default async function HomePage() {
   const supabase = await createClient();
   const batch = await getCurrentBatch(supabase);
 
-  // 8 random products on every visit, so older products stay in view
-  const [categories, { products: featuredProducts }] = await Promise.all([
+  // A fresh random pick on every visit so older products stay in view
+  const seed = newSeed();
+  const [categories, { products: availableProducts }, { products: preorderProducts }] = await Promise.all([
     getMainCategories(supabase),
-    getProductsPage(supabase, { page: 0, seed: newSeed(), limit: 8 }),
+    getProductsPage(supabase, { page: 0, seed, limit: 4, availability: "available" }),
+    getProductsPage(supabase, { page: 0, seed, limit: 4, availability: "preorder" }),
   ]);
 
+  const shownSlugs = [...availableProducts, ...preorderProducts].map((product) => product.slug);
+
   return (
-    <div>
+    <div className="pb-4">
       <div className="max-w-6xl mx-auto px-4 md:px-6 pt-6">
         <BatchBanner batch={batch} />
-
-        <section>
-          <h1 className="sr-only">
-            Quality goods, sourced from China and beyond, delivered to Ghana.
-          </h1>
-          <p className="sr-only">
-            Fashion, electronics, home items, and more — order what you need and we handle the
-            sourcing and importation.
-          </p>
-
-          <div className="relative aspect-[2/1] overflow-hidden rounded-lg border border-navy-100 bg-canvas">
-            <Image
-              src="/hero-banner.jpg"
-              alt={`${BUSINESS.name} banner`}
-              fill
-              priority
-              sizes="(max-width: 1200px) 100vw, 1152px"
-              className="object-cover"
-            />
-
-            <Link
-              href="/shop"
-              className="hidden md:inline-flex absolute left-[20%] top-[91%] -translate-y-1/2 items-center gap-2 rounded bg-turquoise-dark px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-turquoise lg:px-5 lg:py-2 lg:text-sm"
-            >
-              Browse products
-              <HiOutlineArrowRight className="h-3.5 w-3.5 lg:h-4 lg:w-4" />
-            </Link>
-          </div>
-
-          <Link
-            href="/shop"
-            className="md:hidden mt-3 flex items-center justify-center gap-2 rounded bg-turquoise-dark py-3 text-sm font-medium text-white"
-          >
-            Browse products
-            <HiOutlineArrowRight className="h-4 w-4" />
-          </Link>
-        </section>
+        <Hero />
 
         {categories.length > 0 && (
-          <section className="mt-8">
+          <section className="mt-10">
             <h2 className="font-display text-lg text-navy-900 mb-4">Shop by category</h2>
             <CategoryRail categories={categories} />
           </section>
         )}
       </div>
 
-      <section className="max-w-6xl mx-auto px-4 md:px-6 py-12">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="font-display text-2xl text-navy-900">Featured products</h2>
-          <Link href="/shop" className="text-sm text-ocean hover:underline">View all</Link>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-          {featuredProducts.map((product) => (
+      {availableProducts.length > 0 && (
+        <ProductSection
+          title="Available now"
+          subtitle="In stock and ready to ship or pick up."
+          href="/shop?availability=available"
+        >
+          {availableProducts.map((product) => (
             <ProductCard key={product.slug} product={product} />
           ))}
-        </div>
-      </section>
+        </ProductSection>
+      )}
 
-      <RecentlyViewed excludeSlugs={featuredProducts.map((product) => product.slug)} />
+      {preorderProducts.length > 0 && (
+        <ProductSection
+          title="Preorder"
+          subtitle={`Sourced for your order. Estimated arrival in Ghana: ${ESTIMATED_ARRIVAL}.`}
+          href="/shop?availability=preorder"
+        >
+          {preorderProducts.map((product) => (
+            <ProductCard key={product.slug} product={product} />
+          ))}
+        </ProductSection>
+      )}
+
+      <ImportEnquirySection />
+      <HowItWorks />
+      <WhyKings />
+      <ReviewGallery />
+      <ContactBlock />
+
+      <RecentlyViewed excludeSlugs={shownSlugs} />
     </div>
   );
 }
