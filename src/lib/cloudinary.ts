@@ -8,7 +8,7 @@ cloudinary.config({
 
 export async function uploadImageToCloudinary(
   fileBuffer: Buffer,
-  folder = "jay-imports/products"
+  folder = "kings-shop/products"
 ): Promise<{ url: string; publicId: string }> {
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
