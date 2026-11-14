@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useCart } from "@/lib/cart-context";
-import { SHIPPING_INFO, ESTIMATED_ARRIVAL } from "@/lib/constant;
+import { SHIPPING_INFO, ESTIMATED_ARRIVAL } from "@/lib/constant";
 import { OptionButton } from "@/components/storefront/OptionButton";
 import { SelectionList, type SelectionRow } from "@/components/storefront/SelectionList";
 import {
