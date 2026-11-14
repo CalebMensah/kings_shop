@@ -34,8 +34,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "This order is already paid" }, { status: 400 });
   }
 
-  const customerEmail = (order.customer as any)?.email || `${(order.customer as any)?.phone}@jayimports-guest.com`;
-  const reference = `JAY-${order.order_number}-${Date.now().toString(36)}`;
+  const customerEmail = (order.customer as any)?.email || `${(order.customer as any)?.phone}@kings-guest.com`;
+  const reference = ``KINGS-${order.order_number}-${Date.now().toString(36)}`;
   const channel = order.payment_channel === "bank_transfer" ? "bank_transfer" : "mobile_money";
 
   try {
