@@ -5,10 +5,11 @@ import Link from "next/link";
 import { useCart } from "@/lib/cart-context";
 import { BUSINESS } from "@/lib/constants";
 import { HiOutlineShoppingBag, HiOutlineMenu, HiOutlineX, HiOutlineQuestionMarkCircle } from "react-icons/hi";
-import { FiTruck, FiInfo } from "react-icons/fi";
+import { FiTruck, FiInfo, FiGlobe } from "react-icons/fi";
 
 const NAV_LINKS = [
   { label: "Shop", href: "/shop", icon: HiOutlineShoppingBag },
+  { label: "Import & Wholesale", href: "/#import", icon: FiGlobe },
   { label: "Track order", href: "/track-order", icon: FiTruck },
   { label: "FAQ", href: "/faq", icon: HiOutlineQuestionMarkCircle },
   { label: "About", href: "/about", icon: FiInfo },
