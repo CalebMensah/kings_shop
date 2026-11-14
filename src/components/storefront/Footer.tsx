@@ -2,6 +2,7 @@ import Link from "next/link";
 import { FaWhatsapp } from "react-icons/fa";
 import { HiOutlinePhone, HiOutlineMail, HiOutlineLocationMarker } from "react-icons/hi";
 import { BUSINESS, SHIPPING_INFO } from "@/lib/constants";
+import { whatsappUrl, WHATSAPP_MESSAGES } from "@/lib/whatsapp";
 
 // General community group. Public on purpose, unlike the private shipping-updates group.
 const WHATSAPP_GROUP_URL = "https://chat.whatsapp.com/FgrVwqqlphWHemfTmFj64J?s=cl&p=a&iam=2";
@@ -28,25 +29,38 @@ export function Footer() {
           <p className="text-white font-medium mb-2">Contact</p>
           {BUSINESS.phones.map((p) => (
             <p key={p} className="flex items-center gap-2">
-              <HiOutlinePhone className="w-4 h-4 shrink-0" /> {p}
+              <HiOutlinePhone className="w-4 h-4 shrink-0" />
+              <a href={`tel:${p}`} className="hover:text-white">{p}</a>
             </p>
           ))}
           <p className="flex items-center gap-2">
-            <HiOutlineMail className="w-4 h-4 shrink-0" /> {BUSINESS.email}
+            <HiOutlineMail className="w-4 h-4 shrink-0" />
+            <a href={`mailto:${BUSINESS.email}`} className="hover:text-white break-all">{BUSINESS.email}</a>
           </p>
           <p className="flex items-start gap-2 text-navy-300">
             <HiOutlineLocationMarker className="w-4 h-4 shrink-0 mt-0.5" /> {BUSINESS.location}
           </p>
 
-          <a
-            href={WHATSAPP_GROUP_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-4 inline-flex items-center gap-2 rounded bg-[#25D366] px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:brightness-95"
-          >
-            <FaWhatsapp className="h-5 w-5" />
-            Join our WhatsApp group
-          </a>
+          <div className="mt-4 flex flex-col sm:flex-row gap-2">
+            <a
+              href={whatsappUrl(WHATSAPP_MESSAGES.general)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-2 rounded bg-[#25D366] px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:brightness-95"
+            >
+              <FaWhatsapp className="h-5 w-5" />
+              Chat with us
+            </a>
+            <a
+              href={WHATSAPP_GROUP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-2 rounded border border-white/30 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10"
+            >
+              <FaWhatsapp className="h-5 w-5" />
+              Join our WhatsApp group
+            </a>
+          </div>
         </div>
 
         {hasSocials && (
@@ -59,7 +73,7 @@ export function Footer() {
       </div>
 
       <div className="border-t border-white/10 px-4 py-4 text-center text-xs text-navy-400 space-y-2">
-        <div className="flex justify-center gap-4">
+        <div className="flex flex-wrap justify-center gap-x-4 gap-y-1">
           <Link href="/faq" className="hover:text-white">FAQ</Link>
           <Link href="/policies" className="hover:text-white">Order Policies</Link>
           <Link href="/terms" className="hover:text-white">Terms of Service</Link>
