@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
   }
 
   const customerEmail = (order.customer as any)?.email || `${(order.customer as any)?.phone}@kings-guest.com`;
-  const reference = ``KINGS-${order.order_number}-${Date.now().toString(36)}`;
+  const reference = `KINGS-${order.order_number}-${Date.now().toString(36)}`;
   const channel = order.payment_channel === "bank_transfer" ? "bank_transfer" : "mobile_money";
 
   try {
