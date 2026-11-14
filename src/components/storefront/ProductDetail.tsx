@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useCart } from "@/lib/cart-context";
-import { SHIPPING_INFO } from "@/lib/constants";
+import { SHIPPING_INFO, ESTIMATED_ARRIVAL } from "@/lib/constant;
 import { OptionButton } from "@/components/storefront/OptionButton";
 import { SelectionList, type SelectionRow } from "@/components/storefront/SelectionList";
 import {
@@ -400,7 +400,7 @@ export function ProductDetail({
         ) : (
           <span className="inline-flex items-center gap-1 bg-turquoise-dark text-white text-xs px-2 py-1 rounded mb-3">
             <HiOutlineClock className="w-3.5 h-3.5" />
-            Preorder{product.preorder_fulfillment_note ? ` — ${product.preorder_fulfillment_note}` : ""}
+            Preorder — {product.preorder_fulfillment_note || `estimated arrival ${ESTIMATED_ARRIVAL}`}
           </span>
         )}
 
