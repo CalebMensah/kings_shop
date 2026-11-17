@@ -93,9 +93,10 @@ export function ProductDetail({
   const availableVariants = useMemo(() => variants.filter((v) => v.available), [variants]);
   const hasSpecs = specs.length > 0;
 
-  // specId -> the option ids chosen in that specification. Nothing is preselected.
-  const [selected, setSelected] = useState<Record<string, string[]>>({});
-  const [quantities, setQuantities] = useState<Record<string, number>>({});
+  // specId -> the single option chosen in that specification. Nothing is preselected.
+  const [selected, setSelected] = useState<Record<string, string | undefined>>({});
+  // The combinations the customer has chosen, in the order chosen
+  const [lines, setLines] = useState<{ id: string; qty: number }[]>([]);
   const [plainQty, setPlainQty] = useState(moq);
   const [thumbIndex, setThumbIndex] = useState<number | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
@@ -115,8 +116,8 @@ export function ProductDetail({
     () =>
       availableVariants.filter((v) =>
         specs.every((s) => {
-          const picks = selected[s.id] ?? [];
-          return picks.length === 0 || picks.some((id) => v.optionIds.has(id));
+          const pick = selected[s.id];
+          return !pick || v.optionIds.has(pick);
         })
       ),
     [availableVariants, specs, selected]
@@ -129,35 +130,26 @@ export function ProductDetail({
         v.optionIds.has(optionId) &&
         specs.every((s) => {
           if (s.id === specId) return true;
-          const picks = selected[s.id] ?? [];
-          return picks.length === 0 || picks.some((id) => v.optionIds.has(id));
+          const pick = selected[s.id];
+          return !pick || v.optionIds.has(pick);
         })
     );
   }
 
-  // ---- One row per chosen combination, shown once ----
-  const { rows, skipped } = useMemo(() => {
-    if (!hasSpecs) return { rows: [] as Row[], skipped: 0 };
-
-    const picks = specs.map((s) => s.options.filter((o) => (selected[s.id] ?? []).includes(o.id)));
-    if (picks.some((p) => p.length === 0)) return { rows: [] as Row[], skipped: 0 };
-
-    let combos: SpecOption[][] = [[]];
-    for (const group of picks) {
-      combos = combos.flatMap((c) => group.map((o) => [...c, o]));
-    }
-
-    const result: Row[] = [];
-    for (const combo of combos) {
-      const ids = combo.map((o) => o.id);
-      const variant = availableVariants.find(
-        (v) => v.optionIds.size === ids.length && ids.every((id) => v.optionIds.has(id))
-      );
-      if (!variant) continue;
+  // ---- Every available combination, ready to look up by variant id ----
+  const rowByVariant = useMemo(() => {
+    const map = new Map<string, Row>();
+    for (const variant of availableVariants) {
+      const combo: SpecOption[] = [];
+      for (const s of specs) {
+        const option = s.options.find((o) => variant.optionIds.has(o.id));
+        if (option) combo.push(option);
+      }
+      if (combo.length !== specs.length) continue;
 
       const inStock = tracked && variant.stock > 0;
       const limit = inStock ? variant.stock : null;
-      result.push({
+      map.set(variant.id, {
         key: variant.id,
         variantId: variant.id,
         label: combo.map((o) => o.name).join(" / "),
@@ -169,20 +161,30 @@ export function ProductDetail({
         image: combo.find((o) => o.image_url)?.image_url ?? null,
       });
     }
-    return { rows: result, skipped: combos.length - result.length };
-  }, [hasSpecs, specs, selected, availableVariants, tracked, moq]);
+    return map;
+  }, [availableVariants, specs, tracked, moq]);
 
-  const qtyOf = (row: Row) => {
-    const raw = quantities[row.key];
-    // A lone combination is ready to add. When several combinations are showing, new ones start at 0
-    // so choosing another colour never silently adds it in a size the customer didn't pick.
-    if (raw === undefined) return rows.length === 1 ? row.min : 0;
-    if (raw <= 0) return 0;
-    return Math.min(Math.max(raw, row.min), row.limit ?? Number.POSITIVE_INFINITY);
-  };
+  // The combination the customer is looking at right now (only when every specification is chosen)
+  const allChosen = hasSpecs && specs.every((s) => selected[s.id]);
+  const currentRow = useMemo(() => {
+    if (!allChosen) return null;
+    const ids = specs.map((s) => selected[s.id] as string);
+    const variant = availableVariants.find(
+      (v) => v.optionIds.size === ids.length && ids.every((id) => v.optionIds.has(id))
+    );
+    return variant ? rowByVariant.get(variant.id) ?? null : null;
+  }, [allChosen, specs, selected, availableVariants, rowByVariant]);
 
-  const rowQty = rows.map((row) => ({ row, qty: qtyOf(row) }));
-  const activeRows = rowQty.filter((x) => x.qty > 0);
+  const currentUnavailable = allChosen && currentRow === null;
+
+  // ---- Only combinations that were chosen are listed ----
+  const rowQty = lines.flatMap((line) => {
+    const row = rowByVariant.get(line.id);
+    if (!row) return [];
+    const qty = Math.min(Math.max(line.qty, row.min), row.limit ?? Number.POSITIVE_INFINITY);
+    return [{ row, qty }];
+  });
+  const activeRows = rowQty;
 
   // ---- Products without specifications ----
   const plainStock = Math.max(0, Number(product.stock_quantity ?? 0));
@@ -233,7 +235,7 @@ export function ProductDetail({
   const stockText = singleLimit !== null ? (singleLimit <= 5 ? `Only ${singleLimit} left` : "In stock") : null;
 
   // ---- Image ----
-  const chosenOptions = specs.flatMap((s) => s.options.filter((o) => (selected[s.id] ?? []).includes(o.id)));
+  const chosenOptions = specs.flatMap((s) => s.options.filter((o) => selected[s.id] === o.id));
   const focusOption =
     chosenOptions.find((o) => o.id === focusId && o.image_url) ?? chosenOptions.find((o) => o.image_url) ?? null;
   const defaultOptionImage = specs.flatMap((s) => s.options).find((o) => o.image_url)?.image_url ?? null;
@@ -244,14 +246,14 @@ export function ProductDetail({
 
   // ---- Button ----
   const noneAvailable = hasSpecs && availableVariants.length === 0;
-  const firstUnselected = specs.find((s) => (selected[s.id] ?? []).length === 0);
+  const firstUnselected = specs.find((s) => !selected[s.id]);
 
   let blockedLabel: string | null = null;
   if (noneAvailable) blockedLabel = "Not available";
   else if (hasSpecs && activeRows.length === 0) {
     if (firstUnselected) blockedLabel = `Select ${firstUnselected.name}`;
-    else if (rows.length === 0) blockedLabel = "Not available";
-    else blockedLabel = "Choose a quantity";
+    else if (currentUnavailable) blockedLabel = "Not available";
+    else blockedLabel = "Select an option";
   }
   const canAdd = blockedLabel === null;
 
@@ -273,22 +275,35 @@ export function ProductDetail({
   }));
 
   // ---- Actions ----
+  function findRow(sel: Record<string, string | undefined>): Row | null {
+    if (!specs.every((s) => sel[s.id])) return null;
+    const ids = specs.map((s) => sel[s.id] as string);
+    const variant = availableVariants.find(
+      (v) => v.optionIds.size === ids.length && ids.every((id) => v.optionIds.has(id))
+    );
+    return variant ? rowByVariant.get(variant.id) ?? null : null;
+  }
+
   function toggleOption(specId: string, option: SpecOption) {
-    // Lock in what the customer currently sees, so combinations already showing keep their quantity
-    setQuantities((prev) => {
-      const next = { ...prev };
-      for (const { row, qty } of rowQty) {
-        if (next[row.key] === undefined) next[row.key] = qty;
-      }
-      return next;
+    const specIndex = specs.findIndex((s) => s.id === specId);
+
+    // Once a combination is complete, choosing something new starts the next combination:
+    // the choices that come after the one being changed are cleared, so a size is never carried
+    // over to a new colour without the customer picking it.
+    const base: Record<string, string | undefined> = {};
+    specs.forEach((s, i) => {
+      if (i < specIndex || (!allChosen && i !== specIndex)) base[s.id] = selected[s.id];
     });
-    setSelected((prev) => {
-      const current = prev[specId] ?? [];
-      return {
-        ...prev,
-        [specId]: current.includes(option.id) ? current.filter((id) => id !== option.id) : [...current, option.id],
-      };
-    });
+
+    const next = { ...base, [specId]: selected[specId] === option.id ? undefined : option.id };
+    setSelected(next);
+
+    // A complete combination is added to "Your selection" right away
+    const row = findRow(next);
+    if (row && !lines.some((l) => l.id === row.variantId)) {
+      setLines((prev) => [...prev, { id: row.variantId, qty: row.min }]);
+    }
+
     setFocusId(option.id);
     if (option.image_url) setThumbIndex(null);
     setAddedCount(0);
@@ -299,13 +314,16 @@ export function ProductDetail({
     if (!entry) return;
     const { row, qty } = entry;
 
-    let next: number;
     if (delta === 1) {
-      next = qty === 0 ? row.min : row.limit !== null ? Math.min(row.limit, qty + 1) : qty + 1;
+      const next = row.limit !== null ? Math.min(row.limit, qty + 1) : qty + 1;
+      setLines((prev) => prev.map((l) => (l.id === key ? { ...l, qty: next } : l)));
+    } else if (qty <= row.min) {
+      // Going below the minimum removes the combination from the selection
+      setLines((prev) => prev.filter((l) => l.id !== key));
+      if (currentRow?.variantId === key) setSelected({});
     } else {
-      next = qty <= row.min ? 0 : qty - 1;
+      setLines((prev) => prev.map((l) => (l.id === key ? { ...l, qty: qty - 1 } : l)));
     }
-    setQuantities((prev) => ({ ...prev, [key]: next }));
     setAddedCount(0);
   }
 
@@ -341,7 +359,8 @@ export function ProductDetail({
           maxStock: row.inStock ? row.stock : 9999,
         }))
       );
-      setQuantities({}); // start fresh after adding
+      setLines([]); // start fresh after adding
+      setSelected({});
       flashAdded(unitCount);
     } else {
       addItems([
@@ -436,28 +455,17 @@ export function ProductDetail({
 
         {hasSpecs && (
           <div id="options" className="scroll-mt-24">
-            {specs.some((s) => s.options.length > 1) && (
-              <p className="mt-5 text-xs text-navy-400">Tap more than one option to order several at once.</p>
-            )}
-
             {specs.map((spec) => {
-              const picked = selected[spec.id] ?? [];
-              const pickedNames = spec.options.filter((o) => picked.includes(o.id)).map((o) => o.name);
+              const pickedOption = spec.options.find((o) => o.id === selected[spec.id]);
               return (
                 <div key={spec.id} className="mt-4">
                   <p className="text-sm text-navy-700 mb-2">
                     {spec.name}
-                    {pickedNames.length === 0 ? (
-                      <span className="text-red-500"> · required</span>
-                    ) : pickedNames.length <= 2 ? (
-                      `: ${pickedNames.join(", ")}`
-                    ) : (
-                      ` · ${pickedNames.length} selected`
-                    )}
+                    {pickedOption ? `: ${pickedOption.name}` : <span className="text-red-500"> · required</span>}
                   </p>
                   <div className="flex gap-2 flex-wrap">
                     {spec.options.map((option) => {
-                      const chosen = picked.includes(option.id);
+                      const chosen = selected[spec.id] === option.id;
                       const selectable = isSelectable(spec.id, option.id);
                       return (
                         <OptionButton
@@ -478,22 +486,17 @@ export function ProductDetail({
 
             {noneAvailable && <p className="mt-3 text-xs text-red-500">Nothing is available right now.</p>}
 
-            {skipped > 0 && (
-              <p className="mt-3 text-xs text-amber-700">
-                {skipped} combination{skipped === 1 ? "" : "s"} of your choices{" "}
-                {skipped === 1 ? "isn't" : "aren't"} available and left out.
-              </p>
+            {currentUnavailable && (
+              <p className="mt-3 text-xs text-amber-700">That combination isn&apos;t available.</p>
             )}
 
             {listRows.length > 0 && (
               <div className="mt-5">
                 <p className="text-sm text-navy-700 mb-2">Your selection</p>
                 <SelectionList rows={listRows} onStep={stepRow} />
-                {listRows.length > 1 && (
-                  <p className="mt-2 text-xs text-navy-400">
-                    Use + on the exact combinations you want. Anything left at 0 is not added to your cart.
-                  </p>
-                )}
+                <p className="mt-2 text-xs text-navy-400">
+                  Want another colour or size? Just choose it above and it is added here.
+                </p>
               </div>
             )}
           </div>
